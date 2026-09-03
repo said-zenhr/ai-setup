@@ -42,7 +42,7 @@ install.sh                        # the one-shot installer
 |---|---|---|
 | `said-skills` | `/terse-executor`, `/rails-code-review`, `/describe-pr`, `/daily-work-note`, `/morning-brief`, `/code-mentor`, `/engineer-agent-builder`, `/release-ticket-title`, `/concise-output`, `/bro`, plus the **Terse** output style | on |
 | `scribe` | `/scribe`, `/scribe-backfill`, `/scribe-due`. Records decisions, meetings, insights and todos into my Obsidian vault with word budgets, link enforcement and an end-of-session safety net | on |
-| `training-wheels` | `/training-wheels`, `/tw-level`, `/tw-stats`, `/tw-gaps`. Socratic hints over answers, XP and kata progression, strict-mode file gate | off |
+| `training-wheels` | `/training-wheels`, `/tw-level`, `/tw-stats`, `/tw-gaps`, plus the `tw-protocol` terminal dashboard. Socratic hints over answers, XP and kata progression, strict-mode file gate | off |
 
 ### Third-party skills
 
@@ -80,7 +80,10 @@ Full list in [`third-party/skills.txt`](third-party/skills.txt). Update all with
 2. Installs every plugin at user scope and disables the ones marked `disabled`.
 3. Copies `statusline.sh` to `~/.claude/`.
 4. Writes `settings.json` if none exists, otherwise **merges** it in with your existing values winning (a timestamped backup is kept).
-5. Installs third-party skills with `npx skills add … -g`. Skip with `SKIP_THIRD_PARTY=1`.
+5. Links `tw-protocol` into `~/.local/bin` (and adds that to PATH in `.zshrc`) so the training-wheels dashboard runs from any directory.
+6. Installs third-party skills with `npx skills add … -g`. Skip with `SKIP_THIRD_PARTY=1`.
+
+Training-wheels XP state is per machine: `~/.claude/training-wheels/state.json` and `state.sig`. Copy both to carry progress to a new Mac.
 
 Not managed by this repo, on purpose:
 

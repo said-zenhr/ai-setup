@@ -76,6 +76,21 @@ else
   log "  merged into existing $TARGET (backup kept; your values win)"
 fi
 
+log "tw-protocol command"
+TW_SRC="${HERE:+$HERE/plugins/training-wheels/bin/tw-protocol}"
+if [ -n "$TW_SRC" ] && [ -f "$TW_SRC" ]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$TW_SRC" "$HOME/.local/bin/tw-protocol"
+  RC="$HOME/.zshrc"; [ -n "${ZDOTDIR:-}" ] && RC="$ZDOTDIR/.zshrc"
+  if ! grep -qs '\.local/bin' "$RC"; then
+    printf '\n# ai-setup: user binaries (tw-protocol)\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$RC"
+    log "  added ~/.local/bin to PATH in $RC (open a new terminal)"
+  fi
+  log "  ~/.local/bin/tw-protocol → $TW_SRC"
+else
+  warn "not running from a clone; skipping tw-protocol. Clone the repo and re-run ./install.sh"
+fi
+
 if [ "$SKIP_THIRD_PARTY" != "1" ]; then
   log "Third-party skills (via npx skills)"
   if command -v npx >/dev/null 2>&1; then
@@ -91,3 +106,4 @@ if [ "$SKIP_THIRD_PARTY" != "1" ]; then
 fi
 
 log "Done. Start a new Claude Code session, then run /plugin to confirm, and /output-style Terse."
+log "Training-wheels XP lives in ~/.claude/training-wheels/{state.json,state.sig}. Copy both files from the old Mac to keep progress."

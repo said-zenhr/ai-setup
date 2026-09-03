@@ -1,0 +1,4 @@
+#!/bin/sh
+# Training Wheels dashboard from any directory. Resolves tw.rb relative to this file,
+# so it works from the repo clone or from the installed plugin.
+exec ruby "$(cd "$(dirname "$0")/.." && pwd)/scripts/tw.rb" dash
