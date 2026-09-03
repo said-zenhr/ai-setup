@@ -18,7 +18,8 @@ for p in plugins/*/; do
   jq -r .name "$p/.claude-plugin/plugin.json" | grep -qx "$(basename "$p")" || { echo "plugin name != dir: $p"; fail=1; }
 done
 jq -r '.plugins[].source' .claude-plugin/marketplace.json | while read -r src; do
-  [ -d "plugins/$src" ] || { echo "marketplace points at missing plugin: $src"; fail=1; }
+  case "$src" in ./*) ;; *) echo "marketplace source must be a repo-relative path (./plugins/x): $src"; fail=1 ;; esac
+  [ -d "$src" ] || { echo "marketplace points at missing plugin: $src"; fail=1; }
 done
 bash -n install.sh scripts/*.sh config/statusline.sh
 if command -v claude >/dev/null 2>&1; then

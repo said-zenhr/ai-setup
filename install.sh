@@ -105,5 +105,13 @@ if [ "$SKIP_THIRD_PARTY" != "1" ]; then
   fi
 fi
 
+log "Checking Orca hooks"
+if [ -d "$HOME/.orca/agent-hooks" ]; then
+  log "  found ~/.orca/agent-hooks (Orca owns the 12 hook entries in settings.json)"
+else
+  warn "  ~/.orca/agent-hooks missing — the hooks block in settings.json will not fire."
+  warn "  Install Orca to restore it; this repo deliberately does not vendor generated hooks."
+fi
+
 log "Done. Start a new Claude Code session, then run /plugin to confirm, and /output-style Terse."
 log "Training-wheels XP lives in ~/.claude/training-wheels/{state.json,state.sig}. Copy both files from the old Mac to keep progress."

@@ -15,7 +15,23 @@ Reference dump of the full Claude Code setup this repo packages. Regenerate the 
 | Auto-updates | off |
 | Status line | `config/statusline.sh` |
 | Auto mode | on, ZenHR environment profile (not in repo) |
-| Hooks | Orca agent hooks on 12 events (not in repo) |
+| Hooks | One Orca dispatcher shim registered on 12 events (not in repo — see below) |
+
+## Hooks — deliberately not vendored
+
+The 12 hook entries in `settings.json` are not 12 hooks. They are the **same
+generated command** (md5 `32ce876f`) registered on SessionStart, UserPromptSubmit,
+Stop, StopFailure, SubagentStart, SubagentStop, TeammateIdle, PreToolUse,
+PostToolUse, PostToolUseFailure, PermissionRequest, and PostCompact. It is a
+cross-platform shim that dispatches to `$HOME/.orca/agent-hooks/claude-hook.sh`;
+most of its ~27KB is Windows/PowerShell branching.
+
+**Orca owns this.** It rewrites the block on install and upgrade, so a vendored
+copy would rot. To restore hooks on a new machine, install Orca — not this repo.
+`install.sh` warns if `~/.orca/agent-hooks/` is missing.
+
+`autoMode` (`soft_deny` + the ZenHR environment profile) is hand-written and
+*should* be vendored; it is not yet. See the repo TODO.
 
 ## Own skills (`plugins/said-skills/skills`)
 
