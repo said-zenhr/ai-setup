@@ -43,7 +43,9 @@ OVERRIDE_RE  = /\b(just (do|write|fix|build|code) (it|this|that)|do it for me|sk
 CONFIRM_RE   = /\b(do it|i'?m sure|yes,? (do it|really)|confirm|override)\b/i
 EMERGENCY_RE = /\b(prod(uction)? (is )?down|incident|outage|hotfix now)\b/i
 
-def sig_of(raw) = Digest::SHA256.hexdigest("tw-v1:" + raw)
+def sig_of(raw)
+  Digest::SHA256.hexdigest("tw-v1:" + raw)
+end
 
 def load_state
   return [DEFAULT.dup, false] unless File.exist?(STATE)
@@ -68,7 +70,9 @@ def earned_level(state)
   lvl
 end
 
-def level_of(state) = state["forced_level"] || earned_level(state)
+def level_of(state)
+  state["forced_level"] || earned_level(state)
+end
 
 def next_gate(state)
   passed = state["katas"].count { |k| k["passed"] }
@@ -197,7 +201,9 @@ def cmd_level(arg)
   puts "level: #{level_of(state)} (earned: #{earned_level(state)}#{forced}) | xp: #{state['xp']} | #{next_gate(state)}"
 end
 
-def fmt_ts(ts) = Time.at(ts).strftime("%b %d %H:%M")
+def fmt_ts(ts)
+  Time.at(ts).strftime("%b %d %H:%M")
+end
 
 def stats_lines(state)
   passed = state["katas"].count { |k| k["passed"] }

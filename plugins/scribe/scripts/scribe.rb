@@ -13,7 +13,7 @@
 require "json"
 require "time"
 
-VAULT = File.expand_path("~/Desktop/Obsidian - Main")
+VAULT = File.expand_path(ENV.fetch("SCRIBE_VAULT", "~/Desktop/workspace/vault"))
 TODOS = File.join(VAULT, "TODOS.md")
 SDIR  = File.expand_path("~/.claude/scribe")
 
@@ -57,7 +57,9 @@ def cmd_gate
   } })
 end
 
-def session_file(id) = File.join(SDIR, "#{id}.json")
+def session_file(id)
+  File.join(SDIR, "#{id}.json")
+end
 
 def cmd_stop
   data = JSON.parse($stdin.read)
