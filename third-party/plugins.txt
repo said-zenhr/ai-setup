@@ -1,0 +1,7 @@
+# Third-party plugins: <plugin>@<marketplace>  <enabled|disabled>
+# Marketplaces are declared in config/settings.json (extraKnownMarketplaces); install.sh adds them.
+ruby-lsp@claude-plugins-official enabled
+chrome-devtools-mcp@claude-plugins-official enabled
+warp@claude-code-warp enabled
+ponytail@ponytail disabled
+caveman@caveman disabled

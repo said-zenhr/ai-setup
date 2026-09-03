@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/scribe.rb\" gate; exit 0",
+            "timeout": 5,
+            "statusMessage": "Scribe budget check..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/scribe.rb\" stop; exit 0",
+            "timeout": 5,
+            "statusMessage": "Scribe session check..."
+          }
+        ]
+      }
+    ]
+  }
+}

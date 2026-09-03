@@ -1,0 +1,6 @@
+{
+  "_comment": "User-scope MCP servers. Add with `claude mcp add ...` or paste into ~/.claude.json under mcpServers. Project-scope servers (TablePlus for el-ciclo, zen-triage) live in each project's .mcp.json and are not part of this repo.",
+  "mcpServers": {
+    "excalidraw": { "type": "http", "url": "https://mcp.excalidraw.com" }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "model": "fable",
+  "effortLevel": "low",
+  "modelSettings": {
+    "claude-fable-5": {
+      "effortLevel": "medium"
+    },
+    "claude-sonnet-5": {
+      "effortLevel": "low"
+    },
+    "claude-opus-5": {
+      "effortLevel": "medium"
+    },
+    "claude-fable-5-1": {
+      "effortLevel": "medium"
+    }
+  },
+  "theme": "dark",
+  "verbose": false,
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "voiceEnabled": true,
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "feedbackDrafts": "off",
+  "skipWorkflowUsageWarning": true,
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$HOME/.claude/statusline.sh\""
+  },
+  "extraKnownMarketplaces": {
+    "said": {
+      "source": {
+        "source": "github",
+        "repo": "said-zenhr/ai-setup"
+      }
+    },
+    "claude-code-warp": {
+      "source": {
+        "source": "github",
+        "repo": "warpdotdev/claude-code-warp"
+      }
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "said-skills@said": true,
+    "scribe@said": true,
+    "training-wheels@said": false,
+    "ruby-lsp@claude-plugins-official": true,
+    "chrome-devtools-mcp@claude-plugins-official": true,
+    "warp@claude-code-warp": true,
+    "ponytail@ponytail": false,
+    "caveman@caveman": false
+  }
+}

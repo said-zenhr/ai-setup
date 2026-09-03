@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/tw.rb\" inject; exit 0",
+            "timeout": 5,
+            "statusMessage": "Loading training wheels..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/tw.rb\" scan; exit 0",
+            "timeout": 5,
+            "statusMessage": "Training wheels check..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/tw.rb\" gate; exit 0",
+            "timeout": 5,
+            "statusMessage": "Training wheels gate..."
+          }
+        ]
+      }
+    ]
+  }
+}

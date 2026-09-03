@@ -1,0 +1,13 @@
+# Third-party skills installed with `npx skills add <repo> --skill <names> -g -y`.
+# One line per source repo: <owner/repo> <comma-separated skill names>
+# Not vendored here on purpose: they update from upstream via `npx skills update -g`.
+
+devmartinese/awwwards-animations-skill awwwards-animations
+dylantarre/animation-principles exaggerated-clarity
+guia-matthieu/clawfu-skills yc-pitch-deck
+mattpocock/skills ask-matt,batch-grill-me,claude-handoff,code-review,codebase-design,design-an-interface,diagnose,diagnosing-bugs,domain-modeling,edit-article,git-guardrails-claude-code,grill-me,grill-with-docs,grilling,handoff,implement,improve-codebase-architecture,loop-me,migrate-to-shoehorn,obsidian-vault,prototype,qa,request-refactor-plan,research,resolving-merge-conflicts,scaffold-exercises,setup-matt-pocock-skills,setup-pre-commit,setup-ts-deep-modules,tdd,teach,to-issues,to-prd,to-questionnaire,to-spec,to-tickets,triage,ubiquitous-language,wayfinder,wizard,writing-beats,writing-fragments,writing-great-skills,writing-shape,zoom-out
+patricio0312rev/skills explaining-code
+stablyai/orca computer-use,orca-cli,orchestration
+vercel-labs/agent-skills vercel-react-best-practices
+vercel-labs/skills find-skills
+ntcoding/claude-skillz concise-output

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "said",
+  "description": "Sai'd Al-Zain's personal Claude Code setup: skills, Obsidian scribe, training-wheels guardrails.",
+  "owner": { "name": "Sai'd Al-Zain", "url": "https://github.com/said-zenhr" },
+  "metadata": { "pluginRoot": "./plugins" },
+  "plugins": [
+    {
+      "name": "said-skills",
+      "source": "said-skills",
+      "description": "Personal skills + the Terse output style.",
+      "category": "productivity"
+    },
+    {
+      "name": "scribe",
+      "source": "scribe",
+      "description": "Records decisions, meetings, insights, and todos into the Obsidian vault with hard word budgets and an end-of-session safety net.",
+      "category": "productivity"
+    },
+    {
+      "name": "training-wheels",
+      "source": "training-wheels",
+      "description": "Training Wheels Protocol: AI guardrails that preserve learning. Socratic hints, XP/kata progression, strict-mode file gate.",
+      "category": "learning",
+      "defaultEnabled": false
+    }
+  ]
+}
