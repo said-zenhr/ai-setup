@@ -1,6 +1,8 @@
 {
   "name": "scribe",
-  "version": "1.2.2",
-  "description": "Records decisions, meetings, insights, and todos into the Obsidian vault — kepano-style + OKF, with hard word budgets, evergreen link enforcement, and an end-of-session recording safety net.",
-  "author": { "name": "Saeed Alzean" }
+  "version": "1.2.3",
+  "description": "Records decisions, meetings, insights, and todos into the Obsidian vault \u2014 kepano-style + OKF, with hard word budgets, evergreen link enforcement, and an end-of-session recording safety net.",
+  "author": {
+    "name": "Saeed Alzean"
+  }
 }

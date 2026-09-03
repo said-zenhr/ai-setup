@@ -1,6 +1,8 @@
 {
   "name": "training-wheels",
-  "version": "1.1.1",
-  "description": "Training Wheels Protocol — AI guardrails that preserve learning for junior devs. Socratic hints over answers, XP + kata progression, override logging, deterministic strict-mode file gate.",
-  "author": { "name": "Saeed Alzean" }
+  "version": "1.1.2",
+  "description": "Training Wheels Protocol \u2014 AI guardrails that preserve learning for junior devs. Socratic hints over answers, XP + kata progression, override logging, deterministic strict-mode file gate.",
+  "author": {
+    "name": "Saeed Alzean"
+  }
 }
