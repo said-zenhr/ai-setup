@@ -19,7 +19,7 @@ TODOS = File.join(VAULT, "TODOS.md")
 SDIR  = File.expand_path("~/.claude/scribe")
 
 # word budgets by note kind (body only, frontmatter excluded)
-BUDGETS = { "session" => 80, "meeting" => 100, "evergreen" => 150, "todo" => 20, "default" => 120 }.freeze
+BUDGETS = { "session" => 80, "daily" => 350, "weekly" => 400, "meeting" => 100, "evergreen" => 150, "todo" => 20, "default" => 120 }.freeze
 SCRIBE_SECTION = "## Scribe" # todos scribe manages in TODOS.md live under this header
 
 def body_of(content)
@@ -39,6 +39,8 @@ end
 
 def kind_of(path, content)
   return "session" if path.include?("/Sessions/")
+  return "daily" if path.include?("/Daily/")
+  return "weekly" if path.include?("/Weekly/")
   return "meeting" if content =~ /\[\[Meetings\]\]/ || path.include?("/Meetings/")
   return "evergreen" if content =~ /\[\[Evergreen\]\]|(^|\s)#?0🌲/ || content =~ /^tags:.*\n(\s+- .*\n)*\s+- 0🌲/
   "default"
@@ -92,9 +94,11 @@ def cmd_stop
   s["nagged"] = true
   File.write(session_file(id), JSON.generate(s))
   puts JSON.generate({ "decision" => "block",
-    "reason" => "Scribe: #{s['turns']} turns and nothing recorded. If this session produced anything worth keeping " \
-                "(decision, insight, todo), write the session note now per the scribe skill, then run " \
-                "`ruby #{File.expand_path(__FILE__)} mark #{id}`. If genuinely nothing to record, just run mark." })
+    "reason" => "🚨🚨🚨 SCRIBE ALERT 🚨🚨🚨 #{s['turns']} turns and NOTHING recorded in the vault. ⏰ " \
+              "Do NOT write anything yet. Ask the user this, verbatim, as the first line of your reply, then stop: " \
+              "\"🚨📝 SCRIBE: record this session in the vault? (yes / no)\". " \
+              "On yes: write the session note per the scribe skill, update the touched project anchors, then run " \
+              "`ruby #{File.expand_path(__FILE__)} mark #{id}`. On no: just run mark." })
 end
 
 def cmd_mark(id)

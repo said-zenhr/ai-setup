@@ -1,7 +1,7 @@
 {
   "name": "said-skills",
   "displayName": "Said's Skills",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Sai'd Al-Zain's personal Claude Code skills: terse executor mode, Rails code review, PR reading order, daily work note, morning brief, code mentor, engineer-agent builder, and a few helpers.",
   "author": {
     "name": "Sai'd Al-Zain",
