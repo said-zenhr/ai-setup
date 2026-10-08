@@ -22,6 +22,13 @@ note with <2 wikilinks — don't fight it, distill.
    Link first mentions: `[[Jwan]]`, `[[ZenHR]]`, `[[training-wheels]]`.
    Unresolved links fine — breadcrumbs.
 3. Start from the matching template in `Templates/` when one exists.
+4. Link every external reference, every mention: tickets
+   `[PLAT-1](https://boundlesshr.atlassian.net/browse/PLAT-1)`, PRs
+   `[#12](https://github.com/ZenHR/zenhr/pull/12)` / `[mfe!3](https://bitbucket.org/boundlessdrop/mfe-monorepo/pull-requests/3)`,
+   Confluence `[Page title](url)`. Look the URL up (gh, Jira, CQL) rather than guess the repo.
+   The gate hook DENIES bare refs like `PLAT-1`, `PR 12`, `#12`, `zenhr#12`.
+5. Set OKF frontmatter: `type`, one-line `description`, and `project:` linking the
+   project note(s). At session end update that project's `## Anchor` (see vault AGENTS.md).
 
 ## Note shapes (kepano + OKF in one frontmatter)
 

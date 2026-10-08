@@ -73,6 +73,9 @@ Run these in parallel where possible.
 ```markdown
 ---
 type: daily
+description: "<the Summary line>"
+project:
+  - "[[<project note from the vault's project list>]]"
 created: D
 tags:
   - note
@@ -102,6 +105,8 @@ tags:
 - Tickets link to `https://boundlesshr.atlassian.net/browse/KEY`.
 - PR link labels: GitHub `[zenhr#N]` / `[osvdev#N]`; Bitbucket `[mfe!N]` / `[zds!N]` / `[zen_tms!N]`.
 - Confluence: link the page by its title, `[Page title](webUrl)`.
+- Every ticket, PR and page mention is a link, including repeats and the Summary line; never a bare `PLAT-1`, `#12` or `PR 12`. The vault's scribe hook rejects bare refs.
+- `project:` lists each project note (`type: project` in the vault) the day touched; wikilink a project's first mention in the body too.
 - Concise, factual. No filler.
 
 ## STEP 3 — Edge cases & finish

@@ -1,6 +1,6 @@
 {
   "name": "scribe",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Records decisions, meetings, insights, and todos into the Obsidian vault — kepano-style + OKF, with hard word budgets, evergreen link enforcement, and an end-of-session recording safety net.",
   "author": {
     "name": "Saeed Alzean"

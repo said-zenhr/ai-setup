@@ -9,6 +9,10 @@ Vault: `~/Desktop/workspace/vault`. All scribe rules apply — budgets, ≥2
 wikilinks, search-before-create, templates. The gate hook enforces them on
 every backfilled note too.
 
+Every ticket, PR and Confluence page mentioned is a markdown link to its URL (scribe
+skill step 4); every note sets `type`, `description` and `project:`, and touched
+projects get their `## Anchor` updated.
+
 Entity rule applies: any person/project linked >2× gets a note from its
 template in `References/` (embeds `Backlinks.base`) — see scribe skill
 "Entities & mentions".

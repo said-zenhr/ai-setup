@@ -26,6 +26,17 @@ def body_of(content)
   content.sub(/\A---\n.*?\n---\n/m, "")
 end
 
+# Tickets, PRs and advisories must be links. Anything already inside a link, code span or URL is fine,
+# and YAML lines (`tickets:` lists, `key: value`) are data, not prose.
+REF_PROTECT = /```.*?```|`[^`\n]*`|!?\[[^\]\n]*\]\([^)\n]*\)|\[\[[^\]\n]*\]\]|<[^>\n]*>|https?:\/\/\S+/m
+JIRA_KEYS = %w[PLAT DIM HOTFIX FOR ZNRLS SEC DEVOPS CORE PIN INFRA OPSAI ZEN ZENX ZHFE ZDSZ ATS ATSRLS ES].freeze
+BARE_REF = /\b(?:#{JIRA_KEYS.join('|')}|CVE-\d{4}|PYSEC-\d{4})-\d+\b|\bPRs?\s+#?\d+|(?<![\w\/#!\[&])#\d+\b(?![-\w])|\b(?:zenhr|el-ciclo|osvdev|system_health|zen_triage|mfe|zds|zen_tms)[#!]\d+\b/
+
+def bare_refs(content)
+  prose = body_of(content).lines.reject { |l| l =~ /\A\s*(-\s+\S+\s*|[\w-]+:.*)\z/ }.join
+  prose.split(REF_PROTECT).flat_map { |s| s.scan(BARE_REF) }.uniq
+end
+
 def kind_of(path, content)
   return "session" if path.include?("/Sessions/")
   return "meeting" if content =~ /\[\[Meetings\]\]/ || path.include?("/Meetings/")
@@ -48,6 +59,12 @@ def cmd_gate
   problems << "over word budget: #{words}/#{budget} words for a #{kind} note — distill, don't transcribe" if words > budget
   if %w[evergreen session meeting].include?(kind) && content.scan(/\[\[[^\]]+\]\]/).size < 2
     problems << "fewer than 2 [[wikilinks]] — no orphan notes; link people/projects/concepts (unresolved links are fine)"
+  end
+  refs = bare_refs(content)
+  unless refs.empty?
+    problems << "unlinked references #{refs.first(5).join(', ')} — link every ticket, PR and page: " \
+                "[PLAT-1](https://boundlesshr.atlassian.net/browse/PLAT-1), [#12](https://github.com/ZenHR/zenhr/pull/12), " \
+                "[mfe!3](https://bitbucket.org/boundlessdrop/mfe-monorepo/pull-requests/3), [Page title](confluence url)"
   end
   return if problems.empty?
 

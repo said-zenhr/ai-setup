@@ -1,12 +1,21 @@
 {
   "name": "said-skills",
   "displayName": "Said's Skills",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sai'd Al-Zain's personal Claude Code skills: terse executor mode, Rails code review, PR reading order, daily work note, morning brief, code mentor, engineer-agent builder, and a few helpers.",
-  "author": { "name": "Sai'd Al-Zain", "url": "https://github.com/said-zenhr" },
+  "author": {
+    "name": "Sai'd Al-Zain",
+    "url": "https://github.com/said-zenhr"
+  },
   "repository": "https://github.com/said-zenhr/ai-setup",
   "license": "MIT",
-  "keywords": ["skills", "rails", "code-review", "productivity", "obsidian"],
+  "keywords": [
+    "skills",
+    "rails",
+    "code-review",
+    "productivity",
+    "obsidian"
+  ],
   "skills": "./skills/",
   "outputStyles": "./output-styles/"
 }
