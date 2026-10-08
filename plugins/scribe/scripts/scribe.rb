@@ -55,7 +55,8 @@ def cmd_gate
   return if content.empty?
 
   kind = kind_of(fp, content)
-  words = body_of(content).scan(/[[:word:]]+/).size
+  # links count as their visible text only, so linking every ref never costs budget
+  words = body_of(content).gsub(/\]\([^)\n]*\)/, "]").gsub(%r{https?://\S+}, "").scan(/[[:word:]]+/).size
   budget = BUDGETS[kind]
   problems = []
   problems << "over word budget: #{words}/#{budget} words for a #{kind} note — distill, don't transcribe" if words > budget
