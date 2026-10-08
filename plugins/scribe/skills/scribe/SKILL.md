@@ -5,7 +5,7 @@ description: Record decisions, meetings, insights, and todos into Saeed's Obsidi
 
 # Scribe
 
-Vault: `~/Desktop/Obsidian - Main`. Engine: `${CLAUDE_PLUGIN_ROOT}/scripts/scribe.rb`.
+Vault: `~/Desktop/workspace/vault`. Engine: `${CLAUDE_PLUGIN_ROOT}/scripts/scribe.rb`.
 
 ## Style — non-negotiable
 

@@ -33,7 +33,7 @@ Resolve to:
 - **Bitbucket:** workspace `boundlessdrop` · repos `mfe-monorepo`, `zds`, `zen_tms` · account_id `712020:6bb69e5f-91a1-4ad0-9298-2e111fc0f778` · token from keychain: `security find-generic-password -s "<SERVICE>" -a "<ACCOUNT>" -w`
 - **Slack:** workspace `zenhr` · my user id `U093RUDJCLV`
 - **Confluence:** same site/cloudId as Jira (`5aa9d8cb-1d53-438d-a617-1b6462e66491`) · my personal space key `~7120206bb69e5f91a14ad092982e111fc0f778`
-- **Vault:** `/Users/saeedalzean/Desktop/Obsidian - Main/` (daily notes in `Daily/`)
+- **Vault:** `~/Desktop/workspace/vault/` (daily notes in `Daily/`)
 
 ## STEP 1 — Gather for D (all read-only)
 

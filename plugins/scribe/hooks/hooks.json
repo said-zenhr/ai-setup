@@ -24,6 +24,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/scribe.rb\" context; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

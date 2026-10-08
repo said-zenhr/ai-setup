@@ -9,6 +9,7 @@
 #   todo done "substring"                            check off in TODOS.md
 #   todo due                                         list open todos, overdue first
 #   budgets  print word budgets
+#   context  SessionStart hook: project index from project-note frontmatter
 
 require "json"
 require "time"
@@ -137,6 +138,34 @@ def cmd_todo_due
   puts "NO DATE:", undated unless undated.empty?
 end
 
+# SessionStart hook: print the project index (context anchoring priming layer).
+# Built live from project-note frontmatter, so it never drifts from the notes.
+def cmd_context
+  require "yaml"
+  projects = Dir[File.join(VAULT, "**/*.md")].filter_map do |f|
+    next if f.include?("/Templates/")
+    fm = File.read(f)[/\A---\n(.*?)\n---/m, 1] or next
+    y = YAML.safe_load(fm, permitted_classes: [Date, Time]) rescue next
+    next unless y.is_a?(Hash) && y["type"] == "project" && y["description"]
+    { path: f.delete_prefix("#{VAULT}/"), y: y, updated: y["updated"].to_s }
+  end.sort_by { |p| p[:updated] }.reverse
+  live, done = projects.partition { |p| %w[active paused].include?(p[:y]["status"].to_s) }
+  todos = File.exist?(TODOS) ? File.read(TODOS).scan(/^- \[ \]/).size : 0
+
+  puts "# Sai'd's vault context (#{VAULT})"
+  puts "Sai'd Al-Zain, platform engineer at ZenHR. Vault conventions: AGENTS.md. Open todos: #{todos} (`scribe.rb todo due`)."
+  puts "Before working on a project below, Read its note: the anchor at the top holds state, decisions with rejected alternatives, constraints and open questions."
+  puts "At pause points and session end, update that anchor in place (State, Decisions, Open questions, `updated:`)."
+  puts "", "## Active and paused projects"
+  live.each do |p|
+    y = p[:y]
+    refs = [y["part_of"], y["repos"], y["tickets"]].flatten.compact.map { |r| r.to_s.gsub(/\[\[|\]\]/, "") }.reject(&:empty?).join(", ")
+    puts "- **#{File.basename(p[:path], '.md')}** (#{y['status']}, #{p[:updated]}) — #{y['description']}"
+    puts "  `#{p[:path]}`#{refs.empty? ? '' : " · #{refs}"}"
+  end
+  puts "", "## Done (read only if asked)", done.map { |p| File.basename(p[:path], ".md") }.join(" · ") unless done.empty?
+end
+
 require "date"
 cmd, *args = ARGV
 begin
@@ -151,6 +180,7 @@ begin
     when "due"  then cmd_todo_due
     end
   when "budgets" then puts BUDGETS.map { |k, v| "#{k}: #{v} words" }
+  when "context" then cmd_context
   end
 rescue Errno::EPIPE
 end

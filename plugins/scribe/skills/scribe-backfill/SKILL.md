@@ -5,7 +5,7 @@ description: Reconstruct a gap in the vault (days/weeks unrecorded) by sweeping 
 
 # Scribe backfill
 
-Vault: `~/Desktop/Obsidian - Main`. All scribe rules apply — budgets, ≥2
+Vault: `~/Desktop/workspace/vault`. All scribe rules apply — budgets, ≥2
 wikilinks, search-before-create, templates. The gate hook enforces them on
 every backfilled note too.
 
