@@ -1,0 +1,6 @@
+{
+  "name": "plain",
+  "version": "1.0.0",
+  "description": "Replies in ASD-STE100 Simplified Technical English with a word-cap dial: 30 words at level 1 up to 900 at level 7, re-injected every turn and checked after every reply.",
+  "author": { "name": "Saeed Alzean" }
+}

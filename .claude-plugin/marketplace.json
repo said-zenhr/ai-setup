@@ -25,6 +25,12 @@
       "description": "Training Wheels Protocol: AI guardrails that preserve learning. Socratic hints, XP/kata progression, strict-mode file gate.",
       "category": "learning",
       "defaultEnabled": false
+    },
+    {
+      "name": "plain",
+      "source": "./plugins/plain",
+      "description": "Replies in ASD-STE100 Simplified Technical English, 30 to 900 words, enforced every turn by hooks.",
+      "category": "productivity"
     }
   ]
 }

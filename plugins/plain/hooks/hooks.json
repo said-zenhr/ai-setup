@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/plain.rb\" remind; exit 0", "timeout": 5 }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/plain.rb\" remind; exit 0", "timeout": 5 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "ruby \"${CLAUDE_PLUGIN_ROOT}/scripts/plain.rb\" check; exit 0", "timeout": 5 }] }
+    ]
+  }
+}

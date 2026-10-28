@@ -12,6 +12,7 @@ Or, inside a Claude Code session, just the plugins:
 /plugin marketplace add said-zenhr/ai-setup
 /plugin install said-skills@said
 /plugin install scribe@said
+/plugin install plain@said
 ```
 
 ## What's inside
@@ -21,6 +22,7 @@ Or, inside a Claude Code session, just the plugins:
 plugins/
   said-skills/                    # my own skills + the "Terse" output style
   scribe/                         # Obsidian vault recorder (hooks + skills + commands)
+  plain/                          # STE100 replies with a 30-900 word cap (hooks + command)
   training-wheels/                # learning guardrails for junior devs (disabled by default)
 config/
   settings.json                   # sanitized ~/.claude/settings.json (model, effort, plugins, status line)
@@ -42,6 +44,7 @@ install.sh                        # the one-shot installer
 |---|---|---|
 | `said-skills` | `/terse-executor`, `/rails-code-review`, `/describe-pr`, `/daily-work-note`, `/morning-brief`, `/code-mentor`, `/engineer-agent-builder`, `/release-ticket-title`, `/concise-output`, `/bro`, plus the **Terse** output style | on |
 | `scribe` | `/scribe`, `/scribe-backfill`, `/scribe-due`. Records decisions, meetings, insights and todos into my Obsidian vault with word budgets, link enforcement and an end-of-session safety net | on |
+| `plain` | `/plain 1-7`, a level name (`whisper` to `essay`), a word count 30-900, or `off`. Claude replies in ASD-STE100 Simplified Technical English within a word cap from 30 to 900 words. A hook adds the rules to every prompt; a Stop hook counts words and sentences over 20 words and warns on the next turn | on |
 | `training-wheels` | `/training-wheels`, `/tw-level`, `/tw-stats`, `/tw-gaps`, plus the `tw-protocol` terminal dashboard. Socratic hints over answers, XP and kata progression, strict-mode file gate | off |
 
 ### Third-party skills

@@ -60,6 +60,7 @@
   "enabledPlugins": {
     "said-skills@said": true,
     "scribe@said": true,
+    "plain@said": true,
     "training-wheels@said": false,
     "ruby-lsp@claude-plugins-official": true,
     "chrome-devtools-mcp@claude-plugins-official": true,
