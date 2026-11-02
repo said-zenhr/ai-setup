@@ -1,0 +1,796 @@
+#!/usr/bin/env python3
+"""Terminal dashboard for Orca sessions. Run `tabs`, press Enter to go to a session."""
+import colorsys
+import curses
+import glob
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import threading
+import textwrap
+import time
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+
+STATES = [("need", "Needs you"), ("done", "Ready"), ("work", "Working"), ("idle", "Idle")]
+STATE_COLOR = {"need": 1, "done": 6, "work": 2, "idle": 3}
+STATE_ORDER = {key: i for i, (key, _) in enumerate(STATES)}
+FLOATING = "global-floating-terminal"
+NEEDS_YOU = re.compile(r"^\s*(Do you want to .*\?|❯ 1\. |.*\(y/n\)\s*$)", re.M)
+WORKING = re.compile(r"^\s*\S \w[\w'’ -]*… \(", re.M)
+NOISE = re.compile(r"^[─━\s]*$|Update available|/clear to save|bypass permissions|auto mode on|shift\+tab to cycle"
+                   r"|^\s*[❯>]\s*$|^\s*📁 |Tip: |^\s*⎿\s*$")
+TICKET = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+SELF = os.environ.get("ORCA_TERMINAL_HANDLE")
+DEBUG = os.environ.get("ORCA_DASH_DEBUG")
+REGISTRY = os.path.expanduser("~/.claude/sessions/*.json")
+SETTINGS = os.path.expanduser("~/.orca-dash.json")
+ORCA_STATE = os.path.expanduser("~/Library/Application Support/orca/profiles/local-default/profile-state.db")
+def warmth(t):
+    """0 for red, rising through orange, yellow, green and blue to purple; grey and uncolored tabs sort last."""
+    if not t.get("color"):
+        return 3
+    r, g, b = (int(t["color"][i:i + 2], 16) / 255 for i in (1, 3, 5))
+    hue, _, saturation = colorsys.rgb_to_hls(r, g, b)
+    if saturation < 0.2:
+        return 2
+    return hue - 1 if hue > 0.85 else hue
+
+
+SORTS = {
+    "state": lambda t: (STATE_ORDER[t["state"]], -(t.get("lastOutputAt") or 0)),
+    "recent": lambda t: -(t.get("lastOutputAt") or 0),
+    "oldest": lambda t: t.get("lastOutputAt") or 0,
+    "name": lambda t: t["name"].lower(),
+    "hot→cool": lambda t: (warmth(t), t["name"].lower()),
+    "cool→hot": lambda t: (-warmth(t) if warmth(t) < 2 else warmth(t), t["name"].lower()),
+}
+
+
+def orca(*args):
+    out = subprocess.run(["orca", *args, "--json"], capture_output=True, text=True, timeout=15)
+    try:
+        return json.loads(out.stdout)
+    except ValueError:
+        return {}
+
+
+def read_screen(handle):
+    return "\n".join(orca("terminal", "read", "--terminal", handle, "--screen").get("result", {}).get("terminal", {}).get("tail", []))
+
+
+def terminal_of(pid):
+    env = subprocess.run(["ps", "eww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
+    match = re.search(r"ORCA_TERMINAL_HANDLE=(term_[\w-]+)", env)
+    return match.group(1) if match else None
+
+
+def screen_state(screen):
+    bottom = "\n".join(screen.splitlines()[-15:])
+    if NEEDS_YOU.search(bottom):
+        return "need"
+    if WORKING.search(bottom):
+        return "work"
+    return "idle"
+
+
+HATS = ["         ", "   ▗▄▖   ", "    ╻    ", "   ▄█▄   ", "  ♛      ", "    ✿    ", "  ▁▃▅▃▁  ", "   ◢◣    ",
+        "  ╲   ╱  ", "    ◆    "]
+EYES = [("▛", "▜"), ("▌", "▐"), ("▙", "▟"), ("▘", "▝")]
+LEGS = ["  ▘▘ ▝▝  ", "  ▘ ▘▝ ▝ ", "   ▘▘▝▝  ", "  ▝▘ ▝▘  ", " ▘ ▘ ▝ ▝ "]
+BODY_COLORS = [203, 209, 215, 221, 227, 191, 155, 119, 85, 51, 45, 39, 75, 111, 147, 183, 219, 213, 207, 177,
+               141, 105, 69, 167, 173, 179, 114, 80, 116, 182]
+BADGES = {"work": ("♪", "♫"), "need": ("!", "‼"), "done": ("★", "☆")}
+CLOSED_EYES = {"idle": ("-", "-"), "need": (">", "<"), "done": ("^", "^")}
+SNORE = [[(2, 0, "z")], [(2, 0, "z"), (1, 1, "z")], [(2, 0, "z"), (1, 1, "z"), (0, 2, "Z")],
+         [(1, 1, "z"), (0, 2, "Z")], [(0, 2, "Z")], [], []]
+
+
+def look(seed):
+    """A stable Clawd for one tab: hat, eyes, legs and color come from a hash of the tab id."""
+    n = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+    parts = []
+    for options in (HATS, EYES, LEGS, BODY_COLORS):
+        n, pick = divmod(n, len(options))
+        parts.append(options[pick])
+    return parts
+
+
+def creature(seed, state, frame):
+    hat, (left, right), legs, _ = look(seed)
+    if state == "done":
+        hand = ["╲ ", "▐ ", " ╱", "▐ "][frame % 4]
+        return [hat[:8] + hand, f" ▐{left}███{right}▌▐", "▝▜█████▛ ", legs]
+    arms = ("▗▟", "▙▖") if state == "work" and frame else ("▝▜", "▛▘")
+    return [hat, f" ▐{left}███{right}▌ ", f"{arms[0]}█████{arms[1]}", legs]
+
+
+PET_W, PET_H = 18, 8
+
+
+def tab_state():
+    """Per tab, from Orca's own state database: its color, when it was last in front, and its Claude session id."""
+    try:
+        db = sqlite3.connect(f"file:{ORCA_STATE}?mode=ro", uri=True)
+        row = db.execute("select payload from profile_state_documents where domain = 'workspaceSession'").fetchone()
+        db.close()
+    except sqlite3.Error:
+        return {}
+    tabs = {}
+    for group in json.loads(row[0]).get("unifiedTabs", {}).values() if row else []:
+        for tab in group:
+            tabs[tab["id"]] = {"color": tab.get("color"), "focused": tab.get("lastFocusedAt") or 0,
+                               "session_id": (tab.get("aiVaultTitle") or {}).get("sessionId")}
+    return tabs
+
+
+def xterm_rgb(index):
+    """RGB of an xterm-256 cube color (16-231)."""
+    levels = (0, 95, 135, 175, 215, 255)
+    index -= 16
+    return levels[index // 36], levels[index // 6 % 6], levels[index % 6]
+
+
+def color_pair(hex_color, cache={}):
+    """Nearest xterm-256 color for a #rrggbb value, as a curses attribute."""
+    if hex_color not in cache:
+        r, g, b = (round(int(hex_color[i:i + 2], 16) / 255 * 5) for i in (1, 3, 5))
+        pair = 20 + len(cache)
+        curses.init_pair(pair, 16 + 36 * r + 6 * g + b, -1)
+        cache[hex_color] = curses.color_pair(pair)
+    return cache[hex_color]
+
+
+def last_assistant_time(path):
+    with open(path, "rb") as f:
+        f.seek(max(0, os.path.getsize(path) - 256_000))
+        lines = f.read().decode("utf-8", "ignore").splitlines()
+    for line in reversed(lines):
+        if '"type":"assistant"' not in line:
+            continue
+        try:
+            stamp = json.loads(line)["timestamp"]
+        except (ValueError, KeyError):
+            continue
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() * 1000
+    return 0
+
+
+def ago(ms):
+    if not ms:
+        return ""
+    s = max(0, time.time() - ms / 1000)
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if s >= size:
+            return f"{int(s // size)}{unit}"
+    return "now"
+
+
+def short_branch(ref):
+    return (ref or "").replace("refs/heads/", "")
+
+
+def preview_lines(t):
+    lines = ANSI.sub("", t.get("screen") or t.get("preview") or "").splitlines()
+    return [line for line in lines if not NOISE.search(line)]
+
+
+class Dashboard:
+    def __init__(self, screen):
+        self.screen = screen
+        self.sessions = []
+        self.groups = {}
+        self.query = ""
+        self.state_filter = None
+        self.show_untitled = False
+        self.collapsed = set()
+        self.cursor = 0
+        self.message = ""
+        self.settings = {"split": 0.5, "sort": "state", "view": "list", **self.load_settings()}
+        self.pet_pos = []
+        self.drag_from = None
+        self.hits = []
+        self.lock = threading.Lock()
+        self.screens = {}
+        self.seen = {}
+        self.transcripts = {}
+        self.pid_handles = {}
+        self.wake = threading.Event()
+        self.pool = ThreadPoolExecutor(8)
+        threading.Thread(target=self.refresh_forever, daemon=True).start()
+
+    def refresh_forever(self):
+        while True:
+            try:
+                self.refresh()
+            except Exception as error:
+                self.message = f"Refresh failed: {error}"
+            self.wake.wait(3)
+            self.wake.clear()
+
+    def refresh(self):
+        terminals = [t for t in orca("terminal", "list").get("result", {}).get("terminals", []) if t.get("handle") != SELF]
+        worktrees = orca("worktree", "list").get("result", {}).get("worktrees", [])
+        claude = self.claude_sessions()
+        tabs = tab_state()
+
+        stale = [t for t in terminals if t.get("title") and self.screens.get(t["handle"], (None,))[0] != t.get("lastOutputAt")]
+        for t, screen in zip(stale, self.pool.map(lambda t: read_screen(t["handle"]), stale)):
+            self.screens[t["handle"]] = (t.get("lastOutputAt"), screen)
+
+        groups = {w["id"]: {"label": w.get("displayName") or os.path.basename(w["path"]), "path": w["path"],
+                            "branch": short_branch(w.get("branch"))} for w in worktrees}
+        groups[FLOATING] = {"label": "Floating  ⌥⌘A", "path": "", "branch": ""}
+        for t in terminals:
+            t["title"] = t.get("title") or ""
+            t["name"] = re.sub(r"^[⠀-⣿✳✻·⏺\s]+", "", t["title"]).strip() or "(untitled)"
+            t["screen"] = self.screens.get(t["handle"], (None, ""))[1]
+            tab = tabs.get(t.get("tabId"), {})
+            t["color"] = tab.get("color")
+            session = claude.get(t["handle"], {})
+            state = screen_state(t["screen"])
+            t["state"] = "work" if state == "idle" and session.get("status") == "busy" else state
+            finished = self.last_reply(tab.get("session_id") or session.get("sessionId"))
+            looked = max(tab.get("focused", 0), self.seen.get(t.get("tabId"), 0))
+            if t["state"] == "idle" and looked and finished > looked:
+                t["state"] = "done"
+            t["worktrees"] = self.worktrees_of(session, groups.get(t.get("worktreeId"), {}), worktrees)
+            groups.setdefault(t.get("worktreeId"), {"label": os.path.basename(t.get("worktreePath") or "?"),
+                                                    "path": t.get("worktreePath"), "branch": short_branch(t.get("branch"))})
+        with self.lock:
+            self.sessions, self.groups = self.merge_panes(terminals, claude), groups
+
+    @staticmethod
+    def merge_panes(terminals, claude):
+        """One row per tab: a split tab's panes share its title, so show the agent pane and count the rest."""
+        tabs = {}
+        for t in terminals:
+            tabs.setdefault(t.get("tabId") or t["handle"], []).append(t)
+        rows = []
+        for panes in tabs.values():
+            main = max(panes, key=lambda t: (t["handle"] in claude, t.get("lastOutputAt") or 0))
+            main["panes"] = len(panes)
+            main["state"] = min((t["state"] for t in panes), key=STATE_ORDER.get)
+            main["worktrees"] = list(dict.fromkeys(tree for t in panes for tree in t["worktrees"]))
+            rows.append(main)
+        return rows
+
+    def mark_seen(self, tab_id):
+        if tab_id:
+            self.seen[tab_id] = time.time() * 1000
+
+    def last_reply(self, session_id):
+        """When Claude last replied in the session's transcript, in ms. Other entries (system, hooks) do not count."""
+        if not session_id:
+            return 0
+        if session_id not in self.transcripts:
+            found = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{session_id}.jsonl"))
+            self.transcripts[session_id] = [found[0] if found else None, None, 0]
+        entry = self.transcripts[session_id]
+        path, mtime, _ = entry
+        try:
+            current = os.path.getmtime(path) if path else None
+        except OSError:
+            return 0
+        if current and current != mtime:
+            entry[1], entry[2] = current, last_assistant_time(path)
+        return entry[2]
+
+    def claude_sessions(self):
+        sessions = {}
+        for path in glob.glob(REGISTRY):
+            try:
+                with open(path) as f:
+                    session = json.load(f)
+            except (OSError, ValueError):
+                continue
+            pid = session.get("pid")
+            if pid not in self.pid_handles:
+                self.pid_handles[pid] = terminal_of(pid)
+            if self.pid_handles[pid]:
+                sessions[self.pid_handles[pid]] = session
+        return sessions
+
+    @staticmethod
+    def worktrees_of(session, group, worktrees):
+        sid, cwd = session.get("sessionId"), session.get("cwd")
+        own = [short_branch(w.get("branch")) or os.path.basename(w["path"]) for w in worktrees
+               if sid and f"/{sid}/" in w["path"]]
+        if cwd and group.get("path") and not cwd.startswith(group["path"]):
+            own.append(cwd.replace(os.path.expanduser("~"), "~"))
+        return own
+
+    def items(self):
+        """Selectable rows: group headers and the sessions under expanded groups."""
+        q = self.query.lower()
+        sessions = [t for t in self.sessions
+                    if (self.show_untitled or t["title"])
+                    and (not self.state_filter or t["state"] == self.state_filter)
+                    and (not q or q in f"{t['name']} {' '.join(t['worktrees'])} {t['screen'][-2000:]}".lower())]
+        by_group = {}
+        for t in sessions:
+            by_group.setdefault(t.get("worktreeId"), []).append(t)
+        sort = SORTS[self.settings["sort"]]
+        if self.settings["sort"] == "name":
+            group_key = lambda g: self.groups.get(g, {}).get("label", "").lower()
+        else:
+            group_key = lambda g: min(sort(t) for t in by_group[g])
+        order = sorted(by_group, key=lambda g: (g == FLOATING, group_key(g)))
+        rows = []
+        for gid in order:
+            members = sorted(by_group[gid], key=sort)
+            rows.append(("group", gid, members))
+            if gid not in self.collapsed:
+                rows += [("session", gid, t) for t in members]
+        return rows
+
+    def draw(self):
+        s = self.screen
+        s.erase()
+        self.hits = []
+        h, w = s.getmaxyx()
+        with self.lock:
+            rows = self.items()
+            counts = {key: sum(t["state"] == key for t in self.sessions if t["title"]) for key, _ in STATES}
+        self.cursor = max(0, min(self.cursor, len(rows) - 1))
+
+        x = self.put(0, 1, " Sessions ", curses.A_BOLD | curses.A_REVERSE)
+        for i, (key, label) in enumerate(STATES, 1):
+            attr = curses.color_pair(STATE_COLOR[key]) | (curses.A_BOLD | curses.A_UNDERLINE if self.state_filter == key else 0)
+            x = self.put(0, x + 2, f"● {counts[key]} {label}", attr)
+        x = self.put(0, x + 3, f"sort: {self.settings['sort']}", curses.color_pair(4))
+        self.put(0, x + 3, f"/ {self.query}" if self.query else "/ filter", curses.color_pair(5))
+
+        if self.settings["view"] == "pets":
+            self.draw_pets(rows, h, w)
+            footer = self.message or "←→↑↓ move  ↵ go/fold  ⇧↑↓ room  ⇧←→ fold  v list view  / filter  1-4 state  s sort  r rename  n name  click/2×click  q quit"
+            self.put(h - 1, 1, footer[: w - 2], curses.color_pair(5))
+            s.refresh()
+            return
+
+        split = w >= 80
+        list_w = max(30, min(w - 20, int(w * self.split))) if split else w
+        if split:
+            s.vline(1, list_w, curses.ACS_VLINE, h - 2)
+        list_h = h - 2 if split else max(3, h - 10)
+        heights = [2 if kind == "group" else 1 + len(t["worktrees"]) for kind, _, t in rows]
+        top = 0
+        while top < self.cursor and sum(heights[top:self.cursor + 1]) > list_h:
+            top += 1
+        y = 1
+        for i in range(top, len(rows)):
+            kind, gid, data = rows[i]
+            if kind == "group" and i > top:
+                y += 1
+            if y + heights[i] - (kind == "group") > list_h + 1:
+                break
+            if kind == "group":
+                self.group_row(y, gid, data, list_w, i == self.cursor)
+                self.hits.append((y, y, 0, list_w, i))
+                y += 1
+            else:
+                self.session_row(y, data, list_w, i == self.cursor)
+                self.hits.append((y, y + heights[i] - 1, 0, list_w, i))
+                y += heights[i]
+
+        if rows:
+            kind, gid, data = rows[self.cursor]
+            box = (1, list_w + 2, h - 2, w - list_w - 3) if split else (list_h + 2, 1, h - list_h - 3, w - 2)
+            if not split:
+                s.hline(list_h + 1, 0, curses.ACS_HLINE, w)
+            if kind == "group":
+                self.group_preview(*box, gid)
+            else:
+                self.session_preview(*box, data)
+        else:
+            self.put(2, 3, "No sessions match.", curses.color_pair(5))
+
+        footer = self.message or "↑↓ move  ⇧↑↓ group  ↵ go/fold  ←→ fold  / filter  1-4 state  s sort  v pets  r rename  n name  < > resize  R refresh  a untitled  q quit"
+        self.put(h - 1, 1, footer[: w - 2], curses.color_pair(5))
+        s.refresh()
+
+    def draw_pets(self, rows, h, w):
+        """Each Orca group is a room; each session is a creature that shows its state."""
+        cols = max(1, (w - 4) // PET_W)
+        placed, line, col, row_top = [], 0, cols, 0
+        for kind, _, _ in rows:
+            if kind == "group":
+                line += 1 if placed else 0
+                placed.append((line, 0, 1))
+                line, col = line + 1, cols
+                continue
+            if col == cols:
+                row_top, line, col = line, line + PET_H, 0
+            placed.append((row_top, col, PET_H))
+            col += 1
+        self.pet_pos = [(top, col) for top, col, _ in placed]
+        if not rows:
+            self.put(2, 3, "No sessions match.", curses.color_pair(5))
+            return
+        cur_top, _, cur_h = placed[self.cursor]
+        view_h = h - 2
+        self.pet_top = getattr(self, "pet_top", 0)
+        if cur_top < self.pet_top:
+            self.pet_top = cur_top
+        elif cur_top + cur_h > self.pet_top + view_h:
+            self.pet_top = cur_top + cur_h - view_h
+        tick = int(time.time() * 10)
+        for i, ((kind, gid, data), (top, col, height)) in enumerate(zip(rows, placed)):
+            y = 1 + top - self.pet_top
+            if y < 1 or y + height > h - 1:
+                continue
+            if kind == "group":
+                self.group_row(y, gid, data, w, i == self.cursor)
+                self.hits.append((y, y, 0, w, i))
+            else:
+                self.pet(y, 2 + col * PET_W, data, i == self.cursor, tick)
+                self.hits.append((y, y + PET_H - 2, 2 + col * PET_W, 2 + (col + 1) * PET_W - 1, i))
+
+    def pet(self, y, x, t, selected, tick):
+        frame = tick // 3 % 2
+        seed = t.get("tabId") or t["handle"]
+        body = color_pair("#%02x%02x%02x" % xterm_rgb(look(seed)[-1]))
+        wiggle = 1 if t["state"] == "work" and frame else 0
+        for i, art in enumerate(creature(seed, t["state"], tick // 2 if t["state"] == "done" else frame)):
+            attr = body | curses.A_BOLD
+            if t["state"] == "need" and frame and i == 2:
+                attr |= curses.A_REVERSE
+            self.put(y + i, x + 4 + wiggle, art, attr)
+        if t["state"] in CLOSED_EYES:
+            for offset, eye in zip((2, 6), CLOSED_EYES[t["state"]]):
+                self.put(y + 1, x + 4 + wiggle + offset, eye, body | curses.A_BOLD | curses.A_REVERSE)
+        if t["state"] == "idle":
+            tick = int(time.time() * 2) + int(hashlib.md5(seed.encode()).hexdigest(), 16) % len(SNORE)
+            for line, dx, z in SNORE[tick % len(SNORE)]:
+                self.put(y + line, x + 13 + dx, z, curses.color_pair(5) | (curses.A_BOLD if z == "Z" else curses.A_DIM))
+        elif t["state"] == "done":
+            pass
+        else:
+            badge_color = curses.color_pair(STATE_COLOR[t["state"]]) | curses.A_BOLD
+            self.put(y + (0 if frame else 1), x + 14, BADGES[t["state"]][frame], badge_color)
+        tint = color_pair(t["color"]) if t["color"] else 0
+        lines = textwrap.wrap(t["name"], PET_W - 2, max_lines=2, placeholder="…")
+        for i, name in enumerate(lines):
+            self.put(y + 4 + i, x + max(0, (PET_W - 1 - len(name)) // 2), name, (curses.A_REVERSE if selected else 0) | tint | curses.A_BOLD)
+        meta = ago(t.get("lastOutputAt")) + (f" ▥{t['panes']}" if t["panes"] > 1 else "")
+        pet_name = self.pet_name(t)
+        if pet_name:
+            pet_name = pet_name[: PET_W - 4 - len(meta)]
+            start = x + max(0, (PET_W - 1 - len(pet_name) - 3 - len(meta)) // 2)
+            start = self.put(y + 6, start, pet_name, body | curses.A_BOLD)
+            self.put(y + 6, start, f" · {meta}", curses.color_pair(5))
+        else:
+            self.put(y + 6, x + max(0, (PET_W - 1 - len(meta)) // 2), meta, curses.color_pair(5))
+
+    def pet_move(self, key):
+        if not self.pet_pos:
+            return
+        top, col = self.pet_pos[self.cursor]
+        if key in (curses.KEY_LEFT, "h"):
+            self.cursor -= 1
+        elif key in (curses.KEY_RIGHT, "l"):
+            self.cursor += 1
+        else:
+            down = key in (curses.KEY_DOWN, "j")
+            lines = sorted({p[0] for p in self.pet_pos if (p[0] > top if down else p[0] < top)}, reverse=not down)
+            if lines:
+                options = [i for i, p in enumerate(self.pet_pos) if p[0] == lines[0]]
+                self.cursor = min(options, key=lambda i: abs(self.pet_pos[i][1] - col))
+        self.cursor = max(0, min(self.cursor, len(self.pet_pos) - 1))
+
+    def group_row(self, y, gid, members, width, selected):
+        base = curses.A_REVERSE if selected else 0
+        if selected:
+            self.put(y, 0, " " * (width - 1), base)
+        group = self.groups.get(gid, {})
+        x = self.put(y, 1, ("▸ " if gid in self.collapsed else "▾ ") + group.get("label", gid), base | curses.A_BOLD | curses.color_pair(4))
+        if group.get("branch") and group["branch"] != group.get("label"):
+            self.put(y, x + 2, group["branch"][: max(0, width - x - 12)], base | curses.color_pair(5))
+        busy = [t for t in members if t["state"] != "idle"]
+        tail = str(len(members))
+        self.put(y, width - len(tail) - 2, tail, base | curses.color_pair(5))
+        for i, t in enumerate(busy):
+            self.put(y, width - len(tail) - 3 - len(busy) + i, "●", base | curses.color_pair(STATE_COLOR[t["state"]]))
+
+    def session_row(self, y, t, width, selected):
+        base = curses.A_REVERSE if selected else 0
+        if selected:
+            self.put(y, 0, " " * (width - 1), base)
+        if t["color"]:
+            self.put(y, 1, "▌", color_pair(t["color"]))
+        self.put(y, 3, "●", curses.color_pair(STATE_COLOR[t["state"]]) | base)
+        age = ago(t.get("lastOutputAt"))
+        if t["panes"] > 1:
+            age = f"▥{t['panes']}  {age}"
+        name = t["name"][: max(1, width - 10 - len(age))]
+        ticket = TICKET.search(name)
+        x = 5
+        if ticket:
+            x = self.put(y, x, name[: ticket.start()], base)
+            x = self.put(y, x, ticket.group(), base | curses.A_BOLD | curses.color_pair(4))
+            self.put(y, x, name[ticket.end():], base)
+        else:
+            self.put(y, x, name, base)
+        self.put(y, width - len(age) - 2, age, base | curses.color_pair(5))
+        for i, tree in enumerate(t["worktrees"], 1):
+            self.put(y + i, 7, f"└ {tree}"[: width - 9], curses.color_pair(5))
+
+    def group_preview(self, y, x, height, width, gid):
+        group = self.groups.get(gid, {})
+        self.put(y, x, group.get("label", gid)[:width], curses.A_BOLD)
+        self.put(y + 1, x, (group.get("path") or "Floating terminals")[:width], curses.color_pair(5))
+        members = [t for t in self.sessions if t.get("worktreeId") == gid and (self.show_untitled or t["title"])]
+        for i, (key, label) in enumerate(STATES):
+            self.put(y + 3 + i, x, f"● {sum(t['state'] == key for t in members)} {label}", curses.color_pair(STATE_COLOR[key]))
+
+    def session_preview(self, y, x, height, width, t):
+        self.put(y, x, t["name"][:width], curses.A_BOLD)
+        group = self.groups.get(t.get("worktreeId"), {}).get("label", "")
+        pet_name = f"{self.pet_name(t)}  ·  " if self.pet_name(t) else ""
+        self.put(y + 1, x, f"{pet_name}{group}  ·  {ago(t.get('lastOutputAt'))} ago"[:width], curses.color_pair(5))
+        for i, tree in enumerate(t["worktrees"]):
+            self.put(y + 2 + i, x, f"└ {tree}"[:width], curses.color_pair(4))
+        top = y + 3 + len(t["worktrees"])
+        lines = []
+        for line in preview_lines(t):
+            lines += [line[i:i + width] for i in range(0, max(len(line), 1), width)]
+        for i, line in enumerate(lines[-max(1, height - (top - y)):]):
+            self.put(top + i, x, line)
+
+    def put(self, y, x, text, attr=0):
+        h, w = self.screen.getmaxyx()
+        if 0 <= y < h and 0 <= x < w:
+            try:
+                self.screen.addnstr(y, x, text, w - x - 1, attr)
+            except curses.error:
+                pass
+        return x + len(text)
+
+    def read_key(self):
+        """A key, None on timeout, or ("mouse", button, x, y, pressed) for an SGR mouse report."""
+        try:
+            key = self.screen.get_wch()
+        except curses.error:
+            return None
+        if key == "\x1b":
+            key = self.read_escape()
+        if DEBUG:
+            with open(DEBUG, "a") as log:
+                log.write(f"{time.time():.2f} {key!r}\n")
+        return key
+
+    def read_escape(self):
+        self.screen.nodelay(True)
+        sequence = ""
+        try:
+            while len(sequence) < 24:
+                try:
+                    char = self.screen.get_wch()
+                except curses.error:
+                    break
+                sequence += char if isinstance(char, str) else ""
+                if char in ("M", "m") and sequence.startswith("[<"):
+                    break
+        finally:
+            self.screen.timeout(self.frame_ms())
+        if not sequence:
+            return "\x1b"
+        match = re.fullmatch(r"\[<(\d+);(\d+);(\d+)([Mm])", sequence)
+        if not match:
+            return None
+        button, x, y, kind = match.groups()
+        return ("mouse", int(button), int(x) - 1, int(y) - 1, kind == "M")
+
+    def frame_ms(self):
+        return 100 if self.settings["view"] == "pets" else 1000
+
+    def ask(self, prompt, initial=""):
+        h, _ = self.screen.getmaxyx()
+        text = initial
+        curses.curs_set(1)
+        while True:
+            self.screen.move(h - 1, 0)
+            self.screen.clrtoeol()
+            self.put(h - 1, 1, f"{prompt}{text}", curses.A_BOLD)
+            key = self.read_key()
+            if key in ("\n", "\r", curses.KEY_ENTER):
+                curses.curs_set(0)
+                return text.strip()
+            if key == "\x1b":
+                curses.curs_set(0)
+                return None
+            if key in (curses.KEY_BACKSPACE, "\x7f", "\b"):
+                text = text[:-1]
+            elif isinstance(key, str) and key.isprintable():
+                text += key
+
+    def filter_mode(self):
+        while True:
+            self.draw()
+            key = self.read_key()
+            if key == "\x1b":
+                self.query = ""
+                return
+            if key in ("\n", "\r", curses.KEY_ENTER):
+                return
+            if key in (curses.KEY_BACKSPACE, "\x7f", "\b"):
+                self.query = self.query[:-1]
+            elif key in (curses.KEY_UP, curses.KEY_DOWN):
+                self.cursor += 1 if key == curses.KEY_DOWN else -1
+            elif isinstance(key, str) and key.isprintable():
+                self.query += key
+                self.cursor = 0
+
+    @staticmethod
+    def load_settings():
+        try:
+            with open(SETTINGS) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def save(self, **changes):
+        self.settings.update(changes)
+        try:
+            with open(SETTINGS, "w") as f:
+                json.dump(self.settings, f)
+        except OSError:
+            pass
+
+    @property
+    def split(self):
+        return self.settings["split"]
+
+    def resize(self, ratio):
+        self.save(split=round(max(0.2, min(0.85, ratio)), 3))
+
+    def pet_name(self, t):
+        return self.settings.setdefault("pets", {}).get(t.get("tabId") or t["handle"], "")
+
+    def mouse(self, button, x, y, pressed):
+        """Click selects, a second click on the same row opens it, the wheel moves, and the divider drags."""
+        width = self.screen.getmaxyx()[1]
+        divider = max(30, min(width - 20, int(width * self.split)))
+        if button == 64:
+            self.pet_move(curses.KEY_UP) if self.settings["view"] == "pets" else setattr(self, "cursor", self.cursor - 1)
+        elif button == 65:
+            self.pet_move(curses.KEY_DOWN) if self.settings["view"] == "pets" else setattr(self, "cursor", self.cursor + 1)
+        elif button == 0 and pressed:
+            self.drag_from = x
+        elif button == 0:
+            on_divider = self.settings["view"] == "list" and self.drag_from is not None and abs(self.drag_from - divider) <= 1
+            if on_divider and abs(x - divider) > 1:
+                self.resize(x / width)
+            elif not on_divider:
+                self.click(y, x)
+            self.drag_from = None
+
+    def click(self, y, x):
+        hit = next((i for top, bottom, left, right, i in self.hits if top <= y <= bottom and left <= x <= right), None)
+        if hit is None:
+            return
+        now = time.time()
+        again = hit == self.cursor and now - getattr(self, "last_click", 0) < 0.5
+        self.cursor, self.last_click = hit, now
+        if again or self.items()[hit][0] == "group":
+            self.open(*self.items()[hit])
+
+    def open(self, kind, gid, data):
+        if kind == "group":
+            self.fold(gid, gid not in self.collapsed)
+            return
+        ok = orca("terminal", "switch", "--terminal", data["handle"]).get("ok")
+        self.mark_seen(data.get("tabId"))
+        self.message = f"→ {data['name']}" if ok else "Could not switch to that session."
+
+    def fold(self, gid, collapse):
+        (self.collapsed.add if collapse else self.collapsed.discard)(gid)
+        self.cursor = next(i for i, row in enumerate(self.items()) if row[0] == "group" and row[1] == gid)
+
+    def run(self):
+        while True:
+            self.draw()
+            key = self.read_key()
+            if key is None:
+                continue
+            self.message = ""
+            rows = self.items()
+            kind, gid, data = rows[self.cursor] if rows else (None, None, None)
+            if key in ("q", "\x1b"):
+                return
+            elif key == "v":
+                self.save(view="list" if self.settings["view"] == "pets" else "pets")
+                self.screen.timeout(self.frame_ms())
+            elif key in (curses.KEY_SF, curses.KEY_SR, "J", "K"):
+                headers = [i for i, row in enumerate(rows) if row[0] == "group"]
+                if key in (curses.KEY_SF, "J"):
+                    self.cursor = next((i for i in headers if i > self.cursor), self.cursor)
+                else:
+                    self.cursor = next((i for i in reversed(headers) if i < self.cursor), self.cursor)
+            elif key in (curses.KEY_SLEFT, curses.KEY_SRIGHT, "H", "L") and gid:
+                self.fold(gid, key in (curses.KEY_SLEFT, "H"))
+            elif self.settings["view"] == "pets" and kind == "group" and key in (curses.KEY_LEFT, "h") \
+                    and gid not in self.collapsed:
+                self.fold(gid, True)
+            elif self.settings["view"] == "pets" and kind == "group" and key in (curses.KEY_RIGHT, "l") \
+                    and gid in self.collapsed:
+                self.fold(gid, False)
+            elif self.settings["view"] == "pets" and key in (curses.KEY_LEFT, curses.KEY_RIGHT, curses.KEY_UP,
+                                                             curses.KEY_DOWN, "h", "j", "k", "l"):
+                self.pet_move(key)
+            elif key in (curses.KEY_DOWN, "j"):
+                self.cursor += 1
+            elif key in (curses.KEY_UP, "k"):
+                self.cursor -= 1
+            elif key in (curses.KEY_NPAGE, curses.KEY_PPAGE):
+                self.cursor += 10 if key == curses.KEY_NPAGE else -10
+            elif key in ("g", curses.KEY_HOME):
+                self.cursor = 0
+            elif key in ("G", curses.KEY_END):
+                self.cursor = len(rows) - 1
+            elif key in (curses.KEY_LEFT, "h") and gid:
+                self.fold(gid, True)
+            elif key in (curses.KEY_RIGHT, "l") and gid:
+                self.fold(gid, False)
+            elif key == "/":
+                self.filter_mode()
+            elif key in ("1", "2", "3", "4"):
+                state = STATES[int(key) - 1][0]
+                self.state_filter = None if self.state_filter == state else state
+                self.cursor = 0
+            elif key in ("<", ">", "[", "]"):
+                self.resize(self.split + (0.05 if key in (">", "]") else -0.05))
+            elif key == "s":
+                names = list(SORTS)
+                self.save(sort=names[(names.index(self.settings["sort"]) + 1) % len(names)])
+                self.cursor = 0
+            elif isinstance(key, tuple):
+                self.mouse(*key[1:])
+            elif key == "a":
+                self.show_untitled = not self.show_untitled
+            elif key in ("R", "\x12", curses.KEY_F5):
+                self.screens.clear()
+                self.pid_handles.clear()
+                self.wake.set()
+                self.message = "Refreshing…"
+            elif key in ("\n", "\r", curses.KEY_ENTER) or (key == " " and kind == "group"):
+                if kind:
+                    self.open(kind, gid, data)
+            elif key == "n" and kind == "session":
+                name = self.ask("Name this Clawd: ", self.pet_name(data))
+                if name is not None:
+                    pets = self.settings.setdefault("pets", {})
+                    pets[data.get("tabId") or data["handle"]] = name
+                    if not name:
+                        del pets[data.get("tabId") or data["handle"]]
+                    self.save()
+                    self.message = f"Hi, {name}!" if name else "Name removed."
+            elif key == "r" and kind == "session":
+                title = self.ask("Rename: ", data["name"])
+                if title:
+                    ok = orca("terminal", "rename", "--terminal", data["handle"], "--title", title).get("ok")
+                    self.message = "Renamed." if ok else "Rename failed."
+                    self.wake.set()
+
+
+def main(screen):
+    curses.curs_set(0)
+    curses.use_default_colors()
+    for pair, color in enumerate((203, 39, 78, 141, 244, 208), 1):
+        curses.init_pair(pair, color if curses.COLORS >= 256 else curses.COLOR_WHITE, -1)
+    curses.set_escdelay(25)
+    dashboard = Dashboard(screen)
+    screen.timeout(100 if dashboard.settings["view"] == "pets" else 1000)
+    print("\033[?1000h\033[?1006h", end="", flush=True)
+    try:
+        dashboard.run()
+    finally:
+        print("\033[?1006l\033[?1000l", end="", flush=True)
+
+
+if __name__ == "__main__":
+    curses.wrapper(main)

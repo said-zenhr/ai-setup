@@ -35,8 +35,21 @@ scripts/
   sync-from-local.sh              # pull live ~/.claude changes back into this repo
   validate.sh                     # what CI runs
 docs/INVENTORY.md                 # full snapshot of the setup, for reference
+bin/orca-dash                     # terminal dashboard for Orca + Claude Code sessions (alias: tabs)
 install.sh                        # the one-shot installer
 ```
+
+### orca-dash
+
+A full-screen terminal dashboard for every Orca tab, run with `tabs`. Python standard library only.
+
+- Groups sessions under their Orca worktree (and the ⌥⌘A floating panel), with the worktrees each Claude session made shown under it.
+- States: **Needs you** (permission prompt), **Ready** (Claude replied after you last looked at the tab), **Working**, **Idle**.
+- `↵` or a double click opens the tab; `/` filters; `s` sorts (state, recent, oldest, name, hot→cool, cool→hot tab color); `r` renames the tab; `R` refreshes.
+- `v` switches to a creature view: each tab is a Clawd with its own hat, legs and color. It sleeps when idle, bounces when working, waves when Ready; `n` names it.
+- Settings and Clawd names live in `~/.orca-dash.json`.
+
+Data sources: `orca terminal list/read/switch/rename`, `orca worktree list`, `~/.claude/sessions/*.json` (pid → session id, mapped to a tab through the process's `ORCA_TERMINAL_HANDLE`), session transcripts (last reply time), and Orca's `profile-state.db`, read only (tab color, `lastFocusedAt`).
 
 ### Plugins in this marketplace
 

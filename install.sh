@@ -91,6 +91,18 @@ else
   warn "not running from a clone; skipping tw-protocol. Clone the repo and re-run ./install.sh"
 fi
 
+log "orca-dash command (alias: tabs)"
+DASH_SRC="${HERE:+$HERE/bin/orca-dash}"
+if [ -n "$DASH_SRC" ] && [ -f "$DASH_SRC" ]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$DASH_SRC" "$HOME/.local/bin/orca-dash"
+  RC="$HOME/.zshrc"; [ -n "${ZDOTDIR:-}" ] && RC="$ZDOTDIR/.zshrc"
+  grep -qs '^alias tabs=' "$RC" || printf '\n# ai-setup: Orca session dashboard\nalias tabs=orca-dash\n' >> "$RC"
+  log "  ~/.local/bin/orca-dash → $DASH_SRC"
+else
+  warn "not running from a clone; skipping orca-dash. Clone the repo and re-run ./install.sh"
+fi
+
 if [ "$SKIP_THIRD_PARTY" != "1" ]; then
   log "Third-party skills (via npx skills)"
   if command -v npx >/dev/null 2>&1; then
