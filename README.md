@@ -46,7 +46,8 @@ A full-screen terminal dashboard for every Orca tab, run with `tabs`. Python sta
 - Groups sessions under their Orca worktree (and the ⌥⌘A floating panel), with the worktrees each Claude session made shown under it.
 - States: **Needs you** (permission prompt), **Ready** (Claude replied after you last looked at the tab), **Working**, **Idle**.
 - `↵` or a double click opens the tab; `/` filters; `s` sorts (state, recent, oldest, name, hot→cool, cool→hot tab color); `r` renames the tab; `R` refreshes.
-- `v` switches to a creature view: each tab is a Clawd with its own hat, legs and color. It sleeps when idle, bounces when working, waves when Ready; `n` names it.
+- `v` switches to a creature view: each tab is a Clawd with its own hat, legs and color. It sleeps when idle, types on a laptop when working, waves when Ready and hops when it becomes Ready; awake Clawds blink and look around. `n` names it.
+- `w` whips, `f` feeds (random food) and `p` pats a Clawd, with sounds from `sounds/` (right-click whips, middle-click pats). Feeding wakes a sleeping Clawd for 4 seconds.
 - Settings and Clawd names live in `~/.orca-dash.json`.
 
 Data sources: `orca terminal list/read/switch/rename`, `orca worktree list`, `~/.claude/sessions/*.json` (pid → session id, mapped to a tab through the process's `ORCA_TERMINAL_HANDLE`), session transcripts (last reply time), and Orca's `profile-state.db`, read only (tab color, `lastFocusedAt`).

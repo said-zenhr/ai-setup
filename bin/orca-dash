@@ -100,16 +100,57 @@ def look(seed):
     return parts
 
 
-def creature(seed, state, frame):
+QUADRANTS = " ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█"
+
+
+def face(left, right, gaze=0):
+    """The face row; gaze -1/1 moves the eye holes one pixel left or right, "blink" fills them."""
+    row = f" ▐{left}███{right}▌ "
+    if not gaze:
+        return row
+    bits = [QUADRANTS.index(c) for c in row]
+    px = [[bool(bits[c // 2] >> (r * 2 + c % 2) & 1) for c in range(18)] for r in range(2)]
+    holes = [(r, c) for r in range(2) for c in range(4, 14) if not px[r][c]]
+    for r, c in holes:
+        px[r][c] = True
+    if gaze != "blink":
+        for r, c in holes:
+            px[r][min(13, max(4, c + gaze))] = False
+    return "".join(QUADRANTS[sum(px[r][c * 2 + d] << (r * 2 + d) for r in range(2) for d in range(2))] for c in range(9))
+
+
+def creature(seed, state, frame, gaze=0):
     hat, (left, right), legs, _ = look(seed)
     if state == "done":
-        hand = ["╲ ", "▐ ", " ╱", "▐ "][frame % 4]
-        return [hat[:8] + hand, f" ▐{left}███{right}▌▐", "▝▜█████▛ ", legs]
-    arms = ("▗▟", "▙▖") if state == "work" and frame else ("▝▜", "▛▘")
-    return [hat, f" ▐{left}███{right}▌ ", f"{arms[0]}█████{arms[1]}", legs]
+        fingers, palm, arm = WAVE[WAVE_PATH[frame % len(WAVE_PATH)]]
+        return [hat[:8] + fingers, f" ▐{left}███{right}▌" + palm, "▝▜█████▛" + arm, legs]
+    if state == "work":
+        arms = "▗▟█████▙▖" if frame % 2 else "▝▜█████▛▘"
+        return [hat, face(left, right, gaze), arms, LAPTOP]
+    return [hat, face(left, right, gaze), "▝▜█████▛▘", legs]
 
 
+WAVE = [("  ", "▛ ", "  "), ("  ", "▞▘", "  "), ("  ", "▄▀", "  ")]
+WAVE_PATH = [0] * 5 + [1] * 3 + [2] * 5 + [1] * 3
+LAPTOP = "▀▀▀▀▀▀▀▀▀▀▀"
+LID = "▔▔▔▔▔▔"
+CODE = ["</>", "{ }", "01 ", " ;"]
+SPIN = "◜◝◞◟"
 PET_W, PET_H = 18, 8
+SPARK = [(0, 10, "╲│╱"), (1, 10, "─✸─"), (2, 10, "╱│╲")]
+DUST = [(0, 8, "·   ·"), (2, 8, "·   ·"), (1, 7, "·")]
+WHIP = ([[(0, 15, "╲"), (1, 16, "╲")]] * 4 + [[(0, 15, "│"), (1, 15, "│")]] * 3
+        + [[(0, 14, "╱"), (1, 13, "╱")]] * 2 + [[(1, 11, "━━━━━╾")]] * 2
+        + [[(1, 11, "✶━━━━╾")]] * 2 + [SPARK + [(1, 13, "━━━╾")]] * 4 + [DUST] * 5)
+WHIP_HIT = 11
+FOODS = "🍎🍐🍊🍋🍌🍉🍇🍓🫐🍒🍑🥭🍍🥥🥝🍅🥑🥕🌽🥐🥯🍞🥨🧀🥚🥞🧇🥓🍗🍖🌭🍔🍟🍕🥪🌮🌯🥗🍝🍜🍣🍤🥟🍩🍪🎂🧁🍫🍬🍦"
+FEED = ([[(0, 15, "*")]] * 3 + [[(0, 14, "*")]] * 3 + [[(1, 14, "*")]] * 3 + [[(1, 13, "*")]] * 3
+        + [[(1, 12, "*")]] * 8 + [[(1, 12, "*"), (2, 13, "·")]] * 4 + [[(2, 13, "·"), (3, 14, "·")]] * 4
+        + [[(1, 14, "♥")]] * 6 + [[(0, 15, "♥")]] * 8)
+PAT = [[(0, 6, "▄▄▄▄")] if i // 6 % 2 else [(-1, 6, "▄▄▄▄")] for i in range(24)] \
+    + [[(0, 14, "♥")]] * 6 + [[(-1, 15, "♥"), (0, 13, "♥")]] * 8
+SOUNDS = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "sounds")
+SOUND = {"whip": "whip.mp3", "feed": "munch.mp3", "pat": "sparkle.mp3"}
 
 
 def tab_state():
@@ -133,6 +174,18 @@ def xterm_rgb(index):
     levels = (0, 95, 135, 175, 215, 255)
     index -= 16
     return levels[index // 36], levels[index // 6 % 6], levels[index % 6]
+
+
+def shaded(body, part="belly", cache={}):
+    """Shading pairs for one body color: belly (body over 20% darker), legs (darker) and shine (35% lighter over body)."""
+    if (body, part) not in cache:
+        levels = (0, 95, 135, 175, 215, 255)
+        tone = lambda f: 16 + sum(n * min(range(6), key=lambda i: abs(levels[i] - min(255, v * f + (255 - v) * max(0, f - 1))))
+                                  for n, v in zip((36, 6, 1), xterm_rgb(body)))
+        pair = 150 + len(cache)
+        curses.init_pair(pair, *{"belly": (body, tone(0.8)), "legs": (tone(0.8), -1), "shine": (tone(1.35), body)}[part])
+        cache[body, part] = curses.color_pair(pair)
+    return cache[body, part]
 
 
 def color_pair(hex_color, cache={}):
@@ -193,6 +246,9 @@ class Dashboard:
         self.settings = {"split": 0.5, "sort": "state", "view": "list", **self.load_settings()}
         self.pet_pos = []
         self.drag_from = None
+        self.acts = {}
+        self.spin_until = 0
+        self.last_state = {}
         self.hits = []
         self.lock = threading.Lock()
         self.screens = {}
@@ -347,7 +403,7 @@ class Dashboard:
 
         if self.settings["view"] == "pets":
             self.draw_pets(rows, h, w)
-            footer = self.message or "←→↑↓ move  ↵ go/fold  ⇧↑↓ room  ⇧←→ fold  v list view  / filter  1-4 state  s sort  r rename  n name  click/2×click  q quit"
+            footer = self.message or "←→↑↓ move  ↵ go/fold  ⇧↑↓ room  ⇧←→ fold  v list view  / filter  1-4 state  s sort  r rename  n name  w whip  f feed  p pat  click/2×click  right-click whip  middle-click pat  q quit"
             self.put(h - 1, 1, footer[: w - 2], curses.color_pair(5))
             s.refresh()
             return
@@ -418,7 +474,7 @@ class Dashboard:
             self.pet_top = cur_top
         elif cur_top + cur_h > self.pet_top + view_h:
             self.pet_top = cur_top + cur_h - view_h
-        tick = int(time.time() * 10)
+        tick = int(time.time() * 30)
         for i, ((kind, gid, data), (top, col, height)) in enumerate(zip(rows, placed)):
             y = 1 + top - self.pet_top
             if y < 1 or y + height > h - 1:
@@ -431,27 +487,71 @@ class Dashboard:
                 self.hits.append((y, y + PET_H - 2, 2 + col * PET_W, 2 + (col + 1) * PET_W - 1, i))
 
     def pet(self, y, x, t, selected, tick):
-        frame = tick // 3 % 2
+        frame = tick // 9 % 2
         seed = t.get("tabId") or t["handle"]
         body = color_pair("#%02x%02x%02x" % xterm_rgb(look(seed)[-1]))
-        wiggle = 1 if t["state"] == "work" and frame else 0
-        for i, art in enumerate(creature(seed, t["state"], tick // 2 if t["state"] == "done" else frame)):
-            attr = body | curses.A_BOLD
-            if t["state"] == "need" and frame and i == 2:
+        act, since = self.acts.get(seed, (None, 0))
+        age = int((time.time() - since) * 30)
+        whip = age if act == "whip" else 10**6
+        awake = act == "feed" and age < len(FEED) + 4 * 30
+        state = "awake" if t["state"] == "idle" and awake else t["state"]
+        happy = act == "pat" and age < len(PAT) or act == "feed" and 12 <= age < len(FEED)
+        flinch = WHIP_HIT <= whip < WHIP_HIT + 18
+        wiggle = -(whip // 2 % 2) if flinch else 0
+        phase = {"done": tick, "work": tick // 5}.get(state, frame)
+        prev, self.last_state[seed] = self.last_state.get(seed), t["state"]
+        if t["state"] == "done" and prev and prev != "done":
+            self.acts[seed] = act, since = "jump", time.time()
+            age = 0
+        hop = -1 if act == "jump" and age < 24 and age // 6 % 2 == 0 else 0
+        name_y, y = y, y + hop
+        beat = (tick + int(hashlib.md5(seed.encode()).hexdigest(), 16)) % 180
+        gaze = "blink" if beat < 4 or 100 <= beat < 104 else -1 if 40 <= beat < 70 else 1 if 130 <= beat < 160 else 0
+        for i, art in enumerate(creature(seed, state, phase, gaze if state in ("work", "awake") else 0)):
+            attr = curses.color_pair(8) if state == "work" and i == 3 else body | curses.A_BOLD
+            if WHIP_HIT <= whip < WHIP_HIT + 2 and i < 3:
                 attr |= curses.A_REVERSE
-            self.put(y + i, x + 4 + wiggle, art, attr)
-        if t["state"] in CLOSED_EYES:
-            for offset, eye in zip((2, 6), CLOSED_EYES[t["state"]]):
+            if state == "need" and frame and i == 2:
+                attr |= curses.A_REVERSE
+            self.put(y + i, x + (3 if art == LAPTOP else 4) + wiggle, art, attr)
+            if i == 1 and not attr & curses.A_REVERSE and art[3] == "█":
+                self.put(y + 1, x + 7 + wiggle, "▀", shaded(look(seed)[-1], "shine") | curses.A_BOLD)
+            elif i == 2 and not attr & curses.A_REVERSE:
+                self.put(y + 2, x + 6 + wiggle, "▀▀▀▀▀", shaded(look(seed)[-1]) | curses.A_BOLD)
+            elif i == 3 and art != LAPTOP:
+                self.put(y + 3, x + 4 + wiggle, art, shaded(look(seed)[-1], "legs") | curses.A_BOLD)
+        if state == "work":
+            self.put(y + 2, x + 5, LID, curses.color_pair(7))
+        if flinch:
+            for offset, eye in zip((2, 6), (">", "<")):
                 self.put(y + 1, x + 4 + wiggle + offset, eye, body | curses.A_BOLD | curses.A_REVERSE)
-        if t["state"] == "idle":
+            self.put(y + (whip - WHIP_HIT) // 9, x + 3, "'", curses.color_pair(STATE_COLOR["work"]) | curses.A_BOLD)
+        elif happy:
+            for offset in (2, 6):
+                self.put(y + 1, x + 4 + offset, "^", body | curses.A_BOLD | curses.A_REVERSE)
+        elif state in CLOSED_EYES:
+            for offset, eye in zip((2, 6), CLOSED_EYES[state]):
+                self.put(y + 1, x + 4 + wiggle + offset, eye, body | curses.A_BOLD | curses.A_REVERSE)
+        if state == "idle":
             tick = int(time.time() * 2) + int(hashlib.md5(seed.encode()).hexdigest(), 16) % len(SNORE)
             for line, dx, z in SNORE[tick % len(SNORE)]:
                 self.put(y + line, x + 13 + dx, z, curses.color_pair(5) | (curses.A_BOLD if z == "Z" else curses.A_DIM))
-        elif t["state"] == "done":
+        elif state in ("done", "awake"):
             pass
+        elif state == "work":
+            self.put(y + 1 - tick // 18 % 2, x + 14, CODE[tick // 36 % len(CODE)], curses.color_pair(STATE_COLOR["work"]) | curses.A_DIM)
         else:
-            badge_color = curses.color_pair(STATE_COLOR[t["state"]]) | curses.A_BOLD
-            self.put(y + (0 if frame else 1), x + 14, BADGES[t["state"]][frame], badge_color)
+            badge_color = curses.color_pair(STATE_COLOR[state]) | curses.A_BOLD
+            self.put(y + (0 if frame else 1), x + 14, BADGES[state][frame], badge_color)
+        for dy, dx, lash in WHIP[whip] if whip < len(WHIP) else []:
+            self.put(y + dy, x + dx, lash, curses.color_pair(6 if (dy, dx, lash) in SPARK or "✶" in lash else 5) | (curses.A_DIM if "·" in lash else curses.A_BOLD))
+        for treat, frames, look_of in (("feed", FEED, color_pair("#d7875f")), ("pat", PAT, color_pair("#ffd7af"))):
+            for dy, dx, glyph in frames[age] if act == treat and age < len(frames) else []:
+                glyph = FOODS[int(since * 1000) % len(FOODS)] if glyph == "*" else glyph
+                self.put(y + dy, x + dx, glyph, (curses.color_pair(1) if glyph == "♥" else look_of) | curses.A_BOLD)
+        if time.time() < self.spin_until:
+            self.put(y, x + 1, SPIN[tick // 3 % len(SPIN)], curses.color_pair(4) | curses.A_BOLD)
+        y = name_y
         tint = color_pair(t["color"]) if t["color"] else 0
         lines = textwrap.wrap(t["name"], PET_W - 2, max_lines=2, placeholder="…")
         for i, name in enumerate(lines):
@@ -586,7 +686,7 @@ class Dashboard:
         return ("mouse", int(button), int(x) - 1, int(y) - 1, kind == "M")
 
     def frame_ms(self):
-        return 100 if self.settings["view"] == "pets" else 1000
+        return 33 if self.settings["view"] == "pets" else 1000
 
     def ask(self, prompt, initial=""):
         h, _ = self.screen.getmaxyx()
@@ -659,6 +759,16 @@ class Dashboard:
             self.pet_move(curses.KEY_UP) if self.settings["view"] == "pets" else setattr(self, "cursor", self.cursor - 1)
         elif button == 65:
             self.pet_move(curses.KEY_DOWN) if self.settings["view"] == "pets" else setattr(self, "cursor", self.cursor + 1)
+        elif button == 2 and not pressed and self.settings["view"] == "pets":
+            self.click(y, x)
+            kind, _, data = self.items()[self.cursor]
+            if kind == "session":
+                self.act(data, "whip")
+        elif button == 1 and not pressed and self.settings["view"] == "pets":
+            self.click(y, x)
+            kind, _, data = self.items()[self.cursor]
+            if kind == "session":
+                self.act(data, "pat")
         elif button == 0 and pressed:
             self.drag_from = x
         elif button == 0:
@@ -668,6 +778,12 @@ class Dashboard:
             elif not on_divider:
                 self.click(y, x)
             self.drag_from = None
+
+    def act(self, t, kind):
+        self.acts[t.get("tabId") or t["handle"]] = (kind, time.time())
+        sound = os.path.join(SOUNDS, SOUND.get(kind, ""))
+        if os.path.isfile(sound):
+            subprocess.Popen(["afplay", sound], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def click(self, y, x):
         hit = next((i for top, bottom, left, right, i in self.hits if top <= y <= bottom and left <= x <= right), None)
@@ -757,6 +873,7 @@ class Dashboard:
                 self.pid_handles.clear()
                 self.wake.set()
                 self.message = "Refreshing…"
+                self.spin_until = time.time() + 1.2
             elif key in ("\n", "\r", curses.KEY_ENTER) or (key == " " and kind == "group"):
                 if kind:
                     self.open(kind, gid, data)
@@ -769,6 +886,8 @@ class Dashboard:
                         del pets[data.get("tabId") or data["handle"]]
                     self.save()
                     self.message = f"Hi, {name}!" if name else "Name removed."
+            elif key in ("w", "f", "p") and kind == "session" and self.settings["view"] == "pets":
+                self.act(data, {"w": "whip", "f": "feed", "p": "pat"}[key])
             elif key == "r" and kind == "session":
                 title = self.ask("Rename: ", data["name"])
                 if title:
@@ -782,6 +901,9 @@ def main(screen):
     curses.use_default_colors()
     for pair, color in enumerate((203, 39, 78, 141, 244, 208), 1):
         curses.init_pair(pair, color if curses.COLORS >= 256 else curses.COLOR_WHITE, -1)
+    if curses.COLORS >= 256:
+        curses.init_pair(7, 239, 236)
+        curses.init_pair(8, 237, -1)
     curses.set_escdelay(25)
     dashboard = Dashboard(screen)
     screen.timeout(100 if dashboard.settings["view"] == "pets" else 1000)
