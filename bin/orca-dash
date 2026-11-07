@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 STATES = [("need", "Needs you"), ("done", "Ready"), ("work", "Working"), ("idle", "Idle")]
 STATE_COLOR = {"need": 1, "done": 6, "work": 2, "idle": 3}
+STATE_GLYPH = {"need": "!", "done": "✓", "work": "…", "idle": "·"}
 STATE_ORDER = {key: i for i, (key, _) in enumerate(STATES)}
 FLOATING = "global-floating-terminal"
 NEEDS_YOU = re.compile(r"^\s*(Do you want to .*\?|❯ 1\. |.*\(y/n\)\s*$)", re.M)
@@ -28,7 +29,7 @@ WORKING = re.compile(r"^\s*\S \w[\w'’ -]*… \(", re.M)
 NOISE = re.compile(r"^[─━\s]*$|Update available|/clear to save|bypass permissions|auto mode on|shift\+tab to cycle"
                    r"|^\s*[❯>]\s*$|^\s*📁 |Tip: |^\s*⎿\s*$")
 TICKET = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
-ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
+UNSAFE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[a-zA-Z]|[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 SELF = os.environ.get("ORCA_TERMINAL_HANDLE")
 DEBUG = os.environ.get("ORCA_DASH_DEBUG")
 REGISTRY = os.path.expanduser("~/.claude/sessions/*.json")
@@ -139,6 +140,10 @@ LAPTOP = "▀▀▀▀▀▀▀▀▀▀▀"
 LID = "▔▔▔▔▔▔"
 CODE = ["</>", "{ }", "01 ", " ;"]
 SPIN = "◜◝◞◟"
+PETS_HELP = ["←→↑↓ move", "↵ open", "w whip", "f feed", "p pat", "b scene", "⇧↑↓ room", "⇧←→ fold", "v list view", "/ filter",
+             "1-4 state", "s sort", "r rename", "n name", "- + dim", "click/2×click", "right-click whip", "middle-click pat", "q quit"]
+LIST_HELP = ["↑↓ move", "↵ go/fold", "←→ fold", "/ filter", "v pets", "s sort", "⇧↑↓ group", "1-4 state", "r rename", "n name",
+             "< > resize", "R refresh", "a untitled", "q quit"]
 PET_W, PET_H = 26, 10
 ART_W = 18
 IDLE_FADE, HALO = 0.2, 0.55
@@ -957,8 +962,25 @@ def short_branch(ref):
     return (ref or "").replace("refs/heads/", "")
 
 
+def capped(items, prefix="", limit=5):
+    """At most `limit` lines; a longer list shows limit - 1 and then "and N more"."""
+    if len(items) <= limit:
+        return [prefix + item for item in items]
+    return [prefix + item for item in items[: limit - 1]] + [f"{' ' * len(prefix)}and {len(items) - limit + 1} more"]
+
+
+def group_label(w, worktrees):
+    """The project a worktree belongs to, then its own name when that adds something: "zenhr", "zenhr · on call"."""
+    mains = {m["repoId"]: os.path.basename(m["path"]) for m in worktrees if m.get("isMainWorktree")}
+    project = mains.get(w.get("repoId")) or os.path.basename(w["path"])
+    name = w.get("displayName") or os.path.basename(w["path"])
+    if name in (project, w.get("branch"), short_branch(w.get("branch")), os.path.basename(w["path"])):
+        return project
+    return f"{project} · {name}"
+
+
 def preview_lines(t):
-    lines = ANSI.sub("", t.get("screen") or t.get("preview") or "").splitlines()
+    lines = UNSAFE.sub("", t.get("screen") or t.get("preview") or "").splitlines()
     return [line for line in lines if not NOISE.search(line)]
 
 
@@ -973,6 +995,7 @@ class Dashboard:
         self.collapsed = set()
         self.cursor = 0
         self.message = ""
+        self.help = False
         self.settings = {"split": 0.5, "sort": "state", "view": "list", **self.load_settings()}
         self.pet_pos = []
         self.drag_from = None
@@ -1014,12 +1037,12 @@ class Dashboard:
         for t, screen in zip(stale, self.pool.map(lambda t: read_screen(t["handle"]), stale)):
             self.screens[t["handle"]] = (t.get("lastOutputAt"), screen)
 
-        groups = {w["id"]: {"label": w.get("displayName") or os.path.basename(w["path"]), "path": w["path"],
-                            "branch": short_branch(w.get("branch"))} for w in worktrees}
+        groups = {w["id"]: {"label": group_label(w, worktrees), "path": w["path"], "branch": short_branch(w.get("branch"))}
+                  for w in worktrees}
         groups[FLOATING] = {"label": "Floating  ⌥⌘A", "path": "", "branch": ""}
         for t in terminals:
             t["title"] = t.get("title") or ""
-            t["name"] = re.sub(r"^[⠀-⣿✳✻·⏺\s]+", "", t["title"]).strip() or "(untitled)"
+            t["name"] = re.sub(r"^[⠀-⣿✳✻·⏺\s]+", "", UNSAFE.sub("", t["title"])).strip() or "(untitled)"
             t["screen"] = self.screens.get(t["handle"], (None, ""))[1]
             tab = tabs.get(t.get("tabId"), {})
             t["color"] = tab.get("color")
@@ -1142,13 +1165,13 @@ class Dashboard:
         x = self.put(0, left + 1, " Sessions ", A_BOLD | A_REVERSE)
         for i, (key, label) in enumerate(STATES, 1):
             attr = cp(STATE_COLOR[key]) | (A_BOLD | A_UNDERLINE if self.state_filter == key else 0)
-            x = self.put(0, x + 2, f"● {counts[key]} {label}", attr)
+            x = self.put(0, x + 2, f"{STATE_GLYPH[key]} {counts[key]} {label}", attr | A_BOLD)
         x = self.put(0, x + 3, f"sort: {self.settings['sort']}", cp(4))
         self.put(0, x + 3, f"/ {self.query}" if self.query else "/ filter", cp(5))
 
         if self.settings["view"] == "pets":
             self.draw_pets(rows, h, w)
-            footer = self.message or "←→↑↓ move  ↵ go/fold  ⇧↑↓ room  ⇧←→ fold  v list view  / filter  1-4 state  s sort  r rename  n name  w whip  f feed  p pat  b scene  - + dim  click/2×click  right-click whip  middle-click pat  q quit"
+            footer = self.message or self.footer(PETS_HELP)
             self.put(h - 1, left + 1, footer[: right - left - 2], cp(5))
             self.flush()
             return
@@ -1191,7 +1214,7 @@ class Dashboard:
         else:
             self.put(2, 3, "No sessions match.", cp(5))
 
-        footer = self.message or "↑↓ move  ⇧↑↓ group  ↵ go/fold  ←→ fold  / filter  1-4 state  s sort  v pets  r rename  n name  < > resize  R refresh  a untitled  q quit"
+        footer = self.message or self.footer(LIST_HELP)
         self.put(h - 1, 1, footer[: w - 2], cp(5))
         self.flush()
 
@@ -1441,7 +1464,7 @@ class Dashboard:
         tail = str(len(members))
         self.put(y, width - len(tail) - 2, tail, base | cp(5))
         for i, t in enumerate(busy):
-            self.put(y, width - len(tail) - 3 - len(busy) + i, "●", base | cp(STATE_COLOR[t["state"]]))
+            self.put(y, width - len(tail) - 3 - len(busy) + i, STATE_GLYPH[t["state"]], base | cp(STATE_COLOR[t["state"]]) | A_BOLD)
 
     def session_row(self, y, t, width, selected):
         base = A_REVERSE if selected else 0
@@ -1449,7 +1472,7 @@ class Dashboard:
             self.put(y, 0, " " * (width - 1), base)
         if t["color"]:
             self.put(y, 1, "▌", color_pair(t["color"]))
-        self.put(y, 3, "●", cp(STATE_COLOR[t["state"]]) | base)
+        self.put(y, 3, STATE_GLYPH[t["state"]], cp(STATE_COLOR[t["state"]]) | base | A_BOLD)
         age = ago(t.get("lastOutputAt"))
         if t["panes"] > 1:
             age = f"▥{t['panes']}  {age}"
@@ -1463,8 +1486,8 @@ class Dashboard:
         else:
             self.put(y, x, name, base)
         self.put(y, width - len(age) - 2, age, base | cp(5))
-        for i, tree in enumerate(t["worktrees"], 1):
-            self.put(y + i, 7, f"└ {tree}"[: width - 9], cp(5))
+        for i, line in enumerate(capped(t["worktrees"], "└ "), 1):
+            self.put(y + i, 7, line[: width - 9], cp(5))
 
     def group_preview(self, y, x, height, width, gid):
         group = self.groups.get(gid, {})
@@ -1477,16 +1500,23 @@ class Dashboard:
     def session_preview(self, y, x, height, width, t):
         self.put(y, x, t["name"][:width], A_BOLD)
         group = self.groups.get(t.get("worktreeId"), {}).get("label", "")
-        pet_name = f"{self.pet_name(t)}  ·  " if self.pet_name(t) else ""
-        self.put(y + 1, x, f"{pet_name}{group}  ·  {ago(t.get('lastOutputAt'))} ago"[:width], cp(5))
-        for i, tree in enumerate(t["worktrees"]):
-            self.put(y + 2 + i, x, f"└ {tree}"[:width], cp(4))
-        top = y + 3 + len(t["worktrees"])
+        rows = [("State", dict(STATES)[t["state"]], cp(STATE_COLOR[t["state"]]) | A_BOLD), ("Group", group, 0),
+                ("Clawd", self.pet_name(t), 0), ("Last output", f"{ago(t.get('lastOutputAt'))} ago", 0)]
+        rows += [("Worktrees" if i == 0 else "", line, cp(4)) for i, line in enumerate(capped(t["worktrees"]))]
+        line = y + 2
+        for label, value, attr in rows:
+            if not value:
+                continue
+            if label:
+                self.put(line, x, f"{label}:", cp(5))
+            self.put(line, x + 16, value[: width - 16], attr)
+            line += 1
+        top = line + 1
         lines = []
-        for line in preview_lines(t):
-            lines += [line[i:i + width] for i in range(0, max(len(line), 1), width)]
-        for i, line in enumerate(lines[-max(1, height - (top - y)):]):
-            self.put(top + i, x, line)
+        for text in preview_lines(t):
+            lines += [text[i:i + width] for i in range(0, max(len(text), 1), width)]
+        for i, text in enumerate(lines[-max(1, height - (top - y)):]):
+            self.put(top + i, x, text)
 
     def put(self, y, x, text, attr=0):
         h, w = self.screen.getmaxyx()
@@ -1593,6 +1623,10 @@ class Dashboard:
             return None
         button, x, y, kind = match.groups()
         return ("mouse", int(button), int(x) - 1, int(y) - 1, kind == "M")
+
+    def footer(self, hints):
+        """The short hint line, or every hint after ?."""
+        return "  ".join(hints if self.help else hints[:6] + ["? help", "q quit"])
 
     def frame_ms(self):
         return 16 if self.settings["view"] == "pets" else 1000
@@ -1728,6 +1762,8 @@ class Dashboard:
             kind, gid, data = rows[self.cursor] if rows else (None, None, None)
             if key in ("q", "\x1b"):
                 return
+            elif key == "?":
+                self.help = not self.help
             elif key == "v":
                 self.save(view="list" if self.settings["view"] == "pets" else "pets")
                 self.screen.timeout(self.frame_ms())
